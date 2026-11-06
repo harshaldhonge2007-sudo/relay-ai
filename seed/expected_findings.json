@@ -1,0 +1,139 @@
+{
+  "case_name": "ShopLedger - Priya Nair Departure",
+  "expected_findings": {
+    "hidden_dependencies": [
+      {
+        "title": "REPORT_BUCKET_NAME environment variable undocumented",
+        "summary": "The nightly report generation job requires REPORT_BUCKET_NAME but docs only mention bucket configuration generically",
+        "evidence": [
+          {
+            "artifact": "slack",
+            "span": "REPORT_BUCKET_NAME and SMTP_RELAY_HOST environment variables",
+            "role": "source"
+          }
+        ],
+        "severity": 0.6,
+        "confidence": 0.9
+      },
+      {
+        "title": "SMTP_RELAY_HOST environment variable undocumented",
+        "summary": "Email notifications depend on SMTP_RELAY_HOST but this is not documented in README or deployment docs",
+        "evidence": [
+          {
+            "artifact": "slack",
+            "span": "REPORT_BUCKET_NAME and SMTP_RELAY_HOST environment variables",
+            "role": "source"
+          }
+        ],
+        "severity": 0.5,
+        "confidence": 0.9
+      }
+    ],
+    "inflight_work": [
+      {
+        "title": "Webhook retry logic for payment notifications in progress",
+        "summary": "SL-456 is in progress and assigned to Priya. The webhook retry logic is partially implemented.",
+        "evidence": [
+          {
+            "artifact": "jira",
+            "span": "SL-456 Implement webhook retry logic for payment notifications",
+            "role": "ticket"
+          },
+          {
+            "artifact": "jira",
+            "span": "status: In Progress",
+            "role": "status"
+          }
+        ],
+        "severity": 0.7,
+        "confidence": 1.0
+      },
+      {
+        "title": "PostgreSQL upgrade not started",
+        "summary": "SL-412 is assigned to Priya but status is To Do. Upgrade may be blocked by her departure.",
+        "evidence": [
+          {
+            "artifact": "jira",
+            "span": "SL-412 Upgrade PostgreSQL to version 15",
+            "role": "ticket"
+          },
+          {
+            "artifact": "jira",
+            "span": "status: To Do",
+            "role": "status"
+          }
+        ],
+        "severity": 0.5,
+        "confidence": 1.0
+      }
+    ],
+    "contradictions": [
+      {
+        "title": "JWT expiry ticket marked Done but issue persists in Slack",
+        "summary": "SL-234 shows status Done on 2024-10-08, but Slack thread from 2024-10-10 shows users still experiencing 15-minute timeouts instead of 2 hours",
+        "evidence": [
+          {
+            "artifact": "jira",
+            "span": "SL-234 Fix JWT token expiry configuration - status: Done, resolved: 2024-10-08T15:30:00Z",
+            "role": "ticket_done"
+          },
+          {
+            "artifact": "slack",
+            "span": "The JWT token expiry issue is still happening in production",
+            "role": "ticket_not_fixed"
+          }
+        ],
+        "severity": 0.8,
+        "confidence": 0.85
+      },
+      {
+        "title": "Currency code migration marked Done but reverted in Slack",
+        "summary": "SL-287 shows status Done on 2024-10-14, but Slack thread shows the migration was reverted on the same day",
+        "evidence": [
+          {
+            "artifact": "jira",
+            "span": "SL-287 Add currency code support to payments table - status: Done, resolved: 2024-10-14T18:00:00Z",
+            "role": "ticket_done"
+          },
+          {
+            "artifact": "slack",
+            "span": "Had to revert the database migration from October 14",
+            "role": "revert"
+          }
+        ],
+        "severity": 0.9,
+        "confidence": 0.9
+      }
+    ],
+    "undocumented_decisions": [
+      {
+        "title": "Migration revert rationale not documented",
+        "summary": "Database migration was reverted due to foreign key constraint violations, but the specific cause and fix approach are only in Slack, not in PR or commit message",
+        "evidence": [
+          {
+            "artifact": "slack",
+            "span": "It was causing foreign key constraint violations in the payments table",
+            "role": "reason"
+          }
+        ],
+        "severity": 0.6,
+        "confidence": 0.7
+      }
+    ]
+  },
+  "demo_scenario": {
+    "initial_completeness_score": 0.52,
+    "after_first_answer": 0.71,
+    "after_second_answer": 0.87,
+    "questions_to_ask": [
+      {
+        "trigger": "Migration revert",
+        "question": "What's the correct approach for the currency_code migration? You mentioned a fixed version - what's different from the reverted one?"
+      },
+      {
+        "trigger": "JWT expiry contradiction",
+        "question": "SL-234 shows as Done but the Slack thread indicates the issue persists. What additional fix was needed?"
+      }
+    ]
+  }
+}

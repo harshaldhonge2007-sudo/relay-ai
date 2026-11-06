@@ -1,0 +1,76 @@
+{
+  "tickets": [
+    {
+      "key": "SL-234",
+      "summary": "Fix JWT token expiry configuration",
+      "description": "Users are experiencing premature session timeouts. The JWT token should expire after 2 hours but currently expires after 15 minutes. Need to update the auth service configuration.",
+      "status": "Done",
+      "assignee": {
+        "id": "jira_priya",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "created": "2024-10-01T10:00:00Z",
+      "updated": "2024-10-08T15:30:00Z",
+      "resolved": "2024-10-08T15:30:00Z",
+      "url": "https://jira.shopledger.io/browse/SL-234"
+    },
+    {
+      "key": "SL-287",
+      "summary": "Add currency code support to payments table",
+      "description": "Extend the payments table to support multiple currencies. Add currency_code column and update all payment processing logic to handle currency conversions.",
+      "status": "Done",
+      "assignee": {
+        "id": "jira_priya",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "created": "2024-09-15T09:00:00Z",
+      "updated": "2024-10-14T18:00:00Z",
+      "resolved": "2024-10-14T18:00:00Z",
+      "url": "https://jira.shopledger.io/browse/SL-287"
+    },
+    {
+      "key": "SL-456",
+      "summary": "Implement webhook retry logic for payment notifications",
+      "description": "When payment webhook notifications fail, they should be retried with exponential backoff. Maximum 5 retries over 24 hours.",
+      "status": "In Progress",
+      "assignee": {
+        "id": "jira_priya",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "created": "2024-10-15T11:00:00Z",
+      "updated": "2024-10-16T14:00:00Z",
+      "url": "https://jira.shopledger.io/browse/SL-456"
+    },
+    {
+      "key": "SL-412",
+      "summary": "Upgrade PostgreSQL to version 15",
+      "description": "Database upgrade needed for better performance and security patches.",
+      "status": "To Do",
+      "assignee": {
+        "id": "jira_priya",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "created": "2024-10-10T13:00:00Z",
+      "updated": "2024-10-10T13:00:00Z",
+      "url": "https://jira.shopledger.io/browse/SL-412"
+    },
+    {
+      "key": "SL-398",
+      "summary": "Fix reporting module timeout errors",
+      "description": "The nightly reporting job is timing out when processing large datasets. Need to optimize queries or implement batch processing.",
+      "status": "Open",
+      "assignee": {
+        "id": "jira_priya",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "created": "2024-10-05T16:00:00Z",
+      "updated": "2024-10-12T10:00:00Z",
+      "url": "https://jira.shopledger.io/browse/SL-398"
+    }
+  ]
+}

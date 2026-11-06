@@ -1,0 +1,108 @@
+{
+  "messages": [
+    {
+      "id": "msg_001",
+      "ts": "1728345600",
+      "user": {
+        "id": "U12345",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "The JWT token expiry issue is still happening in production. Users are getting logged out after 15 minutes instead of the configured 2 hours.",
+      "url": "https://slack.com/archives/C_ENG/p1728345600",
+      "thread_ts": "1728345600"
+    },
+    {
+      "id": "msg_002",
+      "ts": "1728432000",
+      "user": {
+        "id": "U67890",
+        "name": "Alex Chen",
+        "email": "alex@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "I thought SL-234 fixed that? The ticket shows as done.",
+      "url": "https://slack.com/archives/C_ENG/p1728432000",
+      "thread_ts": "1728345600"
+    },
+    {
+      "id": "msg_003",
+      "ts": "1728518400",
+      "user": {
+        "id": "U12345",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "The fix was deployed but something's still wrong. I'm seeing timeout errors in the logs after the token refresh.",
+      "url": "https://slack.com/archives/C_ENG/p1728518400",
+      "thread_ts": "1728345600"
+    },
+    {
+      "id": "msg_004",
+      "ts": "1728604800",
+      "user": {
+        "id": "U12345",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "Had to revert the database migration from October 14. It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version.",
+      "url": "https://slack.com/archives/C_ENG/p1728604800",
+      "thread_ts": "1728604800"
+    },
+    {
+      "id": "msg_005",
+      "ts": "1728691200",
+      "user": {
+        "id": "U11111",
+        "name": "Sam Rodriguez",
+        "email": "sam@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "Why did the migration get reverted? Was there a post-mortem?",
+      "url": "https://slack.com/archives/C_ENG/p1728691200",
+      "thread_ts": "1728604800"
+    },
+    {
+      "id": "msg_006",
+      "ts": "1728777600",
+      "user": {
+        "id": "U12345",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "The issue was that we added the new currency_code column with a NOT NULL constraint before backfilling existing records. I have a fixed version ready but haven't deployed it yet.",
+      "url": "https://slack.com/archives/C_ENG/p1728777600",
+      "thread_ts": "1728604800"
+    },
+    {
+      "id": "msg_007",
+      "ts": "1729036800",
+      "user": {
+        "id": "U12345",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "channel": "C_OPS",
+      "text": "Reminder: the nightly report generation job runs via cron at 2 AM UTC. It depends on REPORT_BUCKET_NAME and SMTP_RELAY_HOST environment variables.",
+      "url": "https://slack.com/archives/C_OPS/p1729036800",
+      "thread_ts": "1729036800"
+    },
+    {
+      "id": "msg_008",
+      "ts": "1729123200",
+      "user": {
+        "id": "U12345",
+        "name": "Priya Nair",
+        "email": "priya@shopledger.io"
+      },
+      "channel": "C_ENG",
+      "text": "Starting work on SL-456 - the webhook retry logic for failed payment notifications.",
+      "url": "https://slack.com/archives/C_ENG/p1729123200",
+      "thread_ts": "1729123200"
+    }
+  ]
+}
