@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { Case, Artifact } from '../types'
+import { API_PREFIX } from '../apiConfig'
 
 interface CaseContextType {
   caseData: Case | null
@@ -44,7 +45,7 @@ export function useCaseLoader(explicitCaseId?: string) {
     if (!caseId) return
     if (caseData?.id === caseId) return  // already loaded
     setLoading(true)
-    fetch(`/api/cases/${caseId}`)
+    fetch(`${API_PREFIX}/cases/${caseId}`)
       .then(r => r.json())
       .then(d => { if (d.id) setCaseData(d) })
       .catch(() => {})

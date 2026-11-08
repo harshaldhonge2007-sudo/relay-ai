@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -178,7 +179,7 @@ export default function CompletenessTest() {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`/api/cases/${caseId}/completeness`);
+      const res = await fetch(`${API_PREFIX}/cases/${caseId}/completeness`);
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       const json: CompletenessData = await res.json();
       setData(json);
@@ -197,7 +198,7 @@ export default function CompletenessTest() {
     if (!caseId || running) return;
     try {
       setRunning(true);
-      const res = await fetch(`/api/cases/${caseId}/completeness/run`, {
+      const res = await fetch(`${API_PREFIX}/cases/${caseId}/completeness/run`, {
         method: "POST",
       });
       if (!res.ok) throw new Error(`Server responded with ${res.status}`);

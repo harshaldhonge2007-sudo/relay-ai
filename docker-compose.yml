@@ -37,7 +37,7 @@ services:
   web:
     build:
       context: ./web
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     environment:
       VITE_API_URL: http://api:8000
     ports:

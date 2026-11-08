@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { API_BASE } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -23,8 +24,6 @@ interface CaseData {
 /* ------------------------------------------------------------------ */
 /*  API helpers                                                        */
 /* ------------------------------------------------------------------ */
-
-const API_BASE = "";
 
 async function fetchHandover(caseId: string): Promise<HandoverItem[]> {
   const res = await fetch(`${API_BASE}/api/cases/${caseId}/handover`);

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */
@@ -303,7 +304,7 @@ export default function WorkTimeline() {
     setError(null);
 
     try {
-      const res = await fetch(`/api/cases/${caseId}/artifacts`);
+      const res = await fetch(`${API_PREFIX}/cases/${caseId}/artifacts`);
       if (!res.ok) {
         throw new Error(`Failed to load artifacts (${res.status})`);
       }

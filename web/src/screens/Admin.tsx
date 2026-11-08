@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -153,7 +154,7 @@ const Admin: React.FC = () => {
 
     async function load() {
       try {
-        const res = await fetch(`/api/cases/${caseId}/admin`);
+        const res = await fetch(`${API_PREFIX}/cases/${caseId}/admin`);
         if (!res.ok) throw new Error("api");
         const json: AdminData = await res.json();
         if (!cancelled) setData(json);

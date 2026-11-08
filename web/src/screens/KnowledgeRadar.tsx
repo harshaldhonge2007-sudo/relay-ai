@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -48,7 +49,7 @@ interface ComponentCard {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const API_BASE = "/api";
+const API_BASE = API_PREFIX;
 
 async function fetchJSON<T>(url: string): Promise<T> {
   const res = await fetch(url);

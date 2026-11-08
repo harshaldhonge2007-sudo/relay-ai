@@ -7,8 +7,21 @@ from app.config import get_settings
 
 settings = get_settings()
 
+
+def get_async_database_url(url: str) -> str:
+    """Normalize database URL for asyncpg / SQLAlchemy async."""
+    if url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+    # asyncpg expects ssl= rather than sslmode=
+    if "sslmode=" in url:
+        url = url.replace("sslmode=", "ssl=")
+    return url
+
+
 engine = create_async_engine(
-    settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+    get_async_database_url(settings.database_url),
     echo=False,
     pool_pre_ping=True,
 )

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -212,7 +213,7 @@ export default function Interview() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/cases/${caseId}/questions`);
+      const res = await fetch(`${API_PREFIX}/cases/${caseId}/questions`);
       if (!res.ok) throw new Error(`Failed to load questions (${res.status})`);
       const data: Question[] = await res.json();
       /* Sort by priority descending */
@@ -232,7 +233,7 @@ export default function Interview() {
   /* Submit an answer */
   const handleSubmitAnswer = async (questionId: string, text: string) => {
     if (!caseId) return;
-    const res = await fetch(`/api/cases/${caseId}/questions/${questionId}/answer`, {
+    const res = await fetch(`${API_PREFIX}/cases/${caseId}/questions/${questionId}/answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),

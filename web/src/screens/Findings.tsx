@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
+import { API_PREFIX } from "../apiConfig";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -281,7 +282,7 @@ export default function Findings() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/cases/${caseId}/findings`);
+        const res = await fetch(`${API_PREFIX}/cases/${caseId}/findings`);
         if (!res.ok) throw new Error(`Failed to load findings (${res.status})`);
         const data: Finding[] = await res.json();
         if (!cancelled) setFindings(data);
