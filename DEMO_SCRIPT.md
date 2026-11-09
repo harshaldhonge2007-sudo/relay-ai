@@ -56,3 +56,4 @@
   > Third, once released, the incoming engineer reviews the document and formally submits a cryptographically timestamped **Receipt Acknowledgement**.
   > RELAY AI turns chaotic offboarding into a traceable, actionable, permission-aware transition."
 - **Action**: Click `Approve` on Claim 1. Click `Reject` on Claim 2 and type a reason. Click `Release to Successor`. Switch role to `Successor` and click `Acknowledge Receipt`.
+

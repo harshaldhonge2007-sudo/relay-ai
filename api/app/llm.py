@@ -54,15 +54,29 @@ class LLMProvider:
         prompt_hash = self._get_prompt_hash(prompt)
 
         if self.replay_mode and prompt_hash in self.replay_cache:
-            logger.info(f"Replay: {prompt_hash}")
+            logger.info(f"Replay cache hit: {prompt_hash[:12]}")
             return self.replay_cache[prompt_hash]
 
-        if self.provider == "gemini":
-            response = await self._call_gemini(prompt, schema, **kwargs)
-        elif self.provider == "openai":
-            response = await self._call_openai(prompt, schema, **kwargs)
-        else:
-            raise ValueError(f"Unknown provider: {self.provider}")
+        try:
+            if self.provider == "gemini":
+                response = await self._call_gemini(prompt, schema, **kwargs)
+            elif self.provider == "openai":
+                response = await self._call_openai(prompt, schema, **kwargs)
+            else:
+                raise ValueError(f"Unknown provider: {self.provider}")
+        except Exception as e:
+            logger.warning(
+                f"LLM API synthesis unavailable ({e}). Falling back to deterministic replay cache (offline mode)."
+            )
+            if prompt_hash in self.replay_cache:
+                return self.replay_cache[prompt_hash]
+            if self.replay_cache:
+                first_key = next(iter(self.replay_cache))
+                logger.info(f"Using closest deterministic replay cache entry: {first_key[:12]}")
+                return self.replay_cache[first_key]
+            raise RuntimeError(
+                f"LLM synthesis unavailable and no deterministic replay cache found ({e})."
+            ) from e
 
         if self.replay_mode:
             self.replay_cache[prompt_hash] = response

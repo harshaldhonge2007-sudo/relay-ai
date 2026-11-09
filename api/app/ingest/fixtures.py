@@ -16,7 +16,7 @@ class FixtureIngestor:
         """Load Slack messages from seed/slack.json."""
         slack_file = SEED_DIR / "slack.json"
         if not slack_file.exists():
-            logger.warning(f"Slack fixture not found: {slack_file}")
+            logger.warning(f"Empty source: Slack fixture file not found at {slack_file}")
             return 0
 
         count = 0
@@ -24,7 +24,12 @@ class FixtureIngestor:
             with open(slack_file) as f:
                 slack_data = json.load(f)
 
-            for message in slack_data.get("messages", []):
+            messages = slack_data.get("messages", [])
+            if not messages:
+                logger.info("Empty source: Slack fixture contains zero messages.")
+                return 0
+
+            for message in messages:
                 try:
                     user_data = message.get("user", {})
                     person = await self._get_or_create_person(
@@ -71,7 +76,7 @@ class FixtureIngestor:
         """Load Jira tickets from seed/jira.json."""
         jira_file = SEED_DIR / "jira.json"
         if not jira_file.exists():
-            logger.warning(f"Jira fixture not found: {jira_file}")
+            logger.warning(f"Empty source: Jira fixture file not found at {jira_file}")
             return 0
 
         count = 0
@@ -79,7 +84,12 @@ class FixtureIngestor:
             with open(jira_file) as f:
                 jira_data = json.load(f)
 
-            for ticket in jira_data.get("tickets", []):
+            tickets = jira_data.get("tickets", [])
+            if not tickets:
+                logger.info("Empty source: Jira fixture contains zero tickets.")
+                return 0
+
+            for ticket in tickets:
                 try:
                     assignee = ticket.get("assignee", {})
                     person = await self._get_or_create_person(

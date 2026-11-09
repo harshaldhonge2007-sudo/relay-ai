@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react'
+import { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from 'react'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -120,6 +120,22 @@ function HighlightedBody({ body, highlight }: { body: string; highlight?: string
 
 function EvidenceDrawer() {
   const { open, items, claimText, closeDrawer } = useContext(EvidenceDrawerContext)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeDrawer()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    setTimeout(() => {
+      closeButtonRef.current?.focus()
+    }, 50)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, closeDrawer])
 
   if (!open) return null
 
@@ -133,7 +149,12 @@ function EvidenceDrawer() {
       />
 
       {/* Panel */}
-      <aside className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[480px] flex flex-col bg-white border-l border-edge-default shadow-float overflow-hidden">
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="Evidence Citations Drawer"
+        className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[480px] flex flex-col bg-white border-l border-edge-default shadow-float overflow-hidden"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-edge-subtle shrink-0">
           <div>
@@ -145,6 +166,7 @@ function EvidenceDrawer() {
             </h2>
           </div>
           <button
+            ref={closeButtonRef}
             onClick={closeDrawer}
             className="p-2 rounded-btn text-ink-secondary hover:text-ink-primary hover:bg-surface-elevated transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ink-primary/20"
             aria-label="Close evidence panel"

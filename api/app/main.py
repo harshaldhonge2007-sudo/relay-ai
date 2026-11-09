@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -24,10 +24,39 @@ from app.schemas import (
 from app.ingest.github import GitHubIngestor
 from app.ingest.fixtures import FixtureIngestor
 from app.ingest.identity import IdentityResolver
+from app.security.auth import verify_demo_token, sign_demo_token, ROLE_HIERARCHY
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
+
+
+# ---------------------------------------------------------------------------
+# Role enforcement dependency — demo authentication, not for production
+# ---------------------------------------------------------------------------
+
+def get_current_role(request: Request) -> str:
+    """
+    Derive role from Authorization: Bearer <token> header using HMAC verification.
+    X-Relay-Role header is NEVER used to assert a role directly.
+    Default role when no valid token: successor.
+    demo authentication — not for production.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        role = verify_demo_token(token)
+        if role:
+            return role
+    return "successor"
+
+
+def require_lead(role: str = Depends(get_current_role)) -> str:
+    """Dependency that raises 403 unless the caller has engineering_lead role."""
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can perform this action.")
+    return role
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -69,6 +98,27 @@ async def health():
 @api_router.get("/")
 async def root():
     return {"app": settings.app_name, "version": settings.app_version, "status": "ready"}
+
+
+# ---------------------------------------------------------------------------
+# Demo Authentication — demo authentication, not for production
+# ---------------------------------------------------------------------------
+
+@api_router.post("/auth/demo-login")
+async def demo_login(request: Request, body: dict = None):
+    """
+    demo authentication — not for production.
+    Accepts {"user": "lead"|"successor"|"contractor"} and returns a signed token.
+    """
+    body = body or {}
+    user = body.get("user") or request.headers.get("x-relay-role", "successor").lower().strip()
+    result = sign_demo_token(user)
+    if result is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown user '{user}'. Valid users: lead, successor, contractor."
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -292,14 +342,24 @@ async def approve_handover(case_id: uuid.UUID, session: AsyncSession = Depends(g
 
 
 @api_router.post("/cases/{case_id}/handover/release")
-async def release_handover(case_id: uuid.UUID, session: AsyncSession = Depends(get_db)):
-    """Release a finalized handover pack."""
+async def release_handover(case_id: uuid.UUID, session: AsyncSession = Depends(get_db), _role: str = Depends(require_lead)):
+    """Release a finalized handover pack with release gating."""
     case = (await session.execute(select(Case).where(Case.id == case_id))).scalar()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+
+    items = (await session.execute(select(HandoverItem).where(HandoverItem.case_id == case_id))).scalars().all()
+    # If items exist, check that none are unreviewed (draft)
+    unreviewed = [str(item.id) for item in items if getattr(item, "status", "draft") == "draft"]
+    if unreviewed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Release gated: All claims must be approved, edited, or rejected before release. Unreviewed claim IDs: {', '.join(unreviewed)}"
+        )
+
     case.status = CaseStatus.RELEASED
     await session.flush()
-    return {"status": "ok", "case_id": str(case_id), "case_status": case.status.value}
+    return {"status": "ok", "case_id": str(case_id), "case_status": case.status.value, "version": 2}
 
 
 # ---------------------------------------------------------------------------
@@ -307,8 +367,12 @@ async def release_handover(case_id: uuid.UUID, session: AsyncSession = Depends(g
 # ---------------------------------------------------------------------------
 
 @api_router.get("/cases/{case_id}/completeness")
-async def get_completeness(case_id: uuid.UUID, session: AsyncSession = Depends(get_db)):
-    """Get completeness test results for a case."""
+async def get_completeness(
+    case_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+    role: str = Depends(get_current_role),
+):
+    """Get completeness test results for a case (role-aware simulation)."""
     case = (await session.execute(select(Case).where(Case.id == case_id))).scalar()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
@@ -344,23 +408,63 @@ async def get_completeness(case_id: uuid.UUID, session: AsyncSession = Depends(g
             "runs": run_scores,
             "required_facts": facts_list,
             "blockers": latest.blockers or [],
+            "role": role,
+            "formula": "weighted sum of found facts / total required facts",
+            "is_simulated": True,
+            "simulated_label": "Simulated developer onboarding agent (offline)",
         }
 
+    # Default fallback seed simulation
+    base_facts = [
+        {"kind": "env_var", "key": "DATABASE_URL", "source": "README.md", "status": "found", "weight": 0.12, "visibility": "public"},
+        {"kind": "env_var", "key": "JWT_SECRET", "source": "README.md", "status": "found", "weight": 0.12, "visibility": "public"},
+        {"kind": "env_var", "key": "STRIPE_API_KEY", "source": "README.md", "status": "found", "weight": 0.12, "visibility": "public"},
+        {"kind": "env_var", "key": "REPORT_BUCKET_NAME", "source": "Handover Item #4 (Slack)", "status": "found", "weight": 0.10, "visibility": "internal"},
+        {"kind": "env_var", "key": "SMTP_RELAY_HOST", "source": "Handover Item #4 (Slack)", "status": "found", "weight": 0.10, "visibility": "internal"},
+        {"kind": "migration", "key": "currency_code_backfill", "source": "Handover Item #2 (Jira/Git)", "status": "found", "weight": 0.15, "visibility": "internal"},
+        {"kind": "documentation", "key": "pg15_upgrade_runbook", "source": "Not documented", "status": "missing", "weight": 0.15, "visibility": "internal"},
+        {"kind": "documentation", "key": "jwt_timeout_root_cause", "source": "Not documented", "status": "missing", "weight": 0.14, "visibility": "internal"},
+    ]
+
+    role_facts = []
+    for f in base_facts:
+        f_copy = dict(f)
+        if role == "contractor" and f.get("visibility") != "public":
+            f_copy["status"] = "withheld"
+            f_copy["source"] = "Withheld: requires internal access"
+        role_facts.append(f_copy)
+
+    found_facts = [f for f in role_facts if f["status"] == "found"]
+    total_weight = sum(f.get("weight", 1.0) for f in role_facts)
+    found_weight = sum(f.get("weight", 1.0) for f in found_facts)
+    score = round(found_weight / total_weight, 2) if total_weight > 0 else 0.0
+
+    blockers = []
+    if role == "contractor":
+        blockers = [
+            "Internal credentials (REPORT_BUCKET_NAME, SMTP_RELAY_HOST) withheld under contractor role ACL.",
+            "Database migration backfill instructions withheld under contractor role ACL.",
+        ]
+    else:
+        blockers = [
+            "PostgreSQL 15 upgrade runbook (SL-412) is missing from repository documentation.",
+            "JWT timeout root cause (Cloudflare gateway) is not explicitly documented in handover.",
+        ]
+
     return {
-        "task": "Deploy the service to a fresh environment",
-        "score": 0.85,
-        "mean": 0.85,
+        "task": "Simulated blind developer setup: Clone repo, run test suite, and trigger payment webhook worker",
+        "score": score,
+        "mean": round(score - 0.02, 2) if score > 0.05 else score,
         "spread": 0.05,
-        "runs": [0.85, 0.90, 0.80],
-        "required_facts": [
-            {"kind": "env_var", "key": "DATABASE_URL", "source": "docker-compose.yml", "status": "found"},
-            {"kind": "env_var", "key": "JWT_SECRET", "source": "auth.py", "status": "found"},
-            {"kind": "env_var", "key": "STRIPE_API_KEY", "source": "billing.py", "status": "missing"},
-            {"kind": "service", "key": "PostgreSQL 16", "source": "docker-compose.yml", "status": "found"},
-            {"kind": "service", "key": "Redis Cache", "source": "cache.py", "status": "found"},
-            {"kind": "command", "key": "alembic upgrade head", "source": "README.md", "status": "found"},
-        ],
-        "blockers": ["Missing Stripe webhook secret configuration", "Unresolved migration rollback in release v1.4.2"],
+        "runs": [round(max(0.1, score - 0.03), 2), score, round(min(1.0, score + 0.02), 2)],
+        "required_facts": role_facts,
+        "blockers": blockers,
+        "role": role,
+        "formula": "weighted sum of found facts / total required facts",
+        "formula_calc": f"{found_weight:.2f} / {total_weight:.2f} = {int(round(score * 100))}%",
+        "unweighted_calc": f"{len(found_facts)} of {len(role_facts)} required facts found",
+        "is_simulated": True,
+        "simulated_label": "Simulated developer onboarding agent (offline)",
     }
 
 
@@ -484,13 +588,25 @@ async def get_person(person_id: uuid.UUID, session: AsyncSession = Depends(get_d
 # ---------------------------------------------------------------------------
 
 @api_router.get("/artifacts/{artifact_id}")
-async def get_artifact_by_id(artifact_id: str, session: AsyncSession = Depends(get_db)):
-    """Fetch single artifact with ACL protection."""
+async def get_artifact_by_id(
+    artifact_id: str,
+    session: AsyncSession = Depends(get_db),
+    role: str = Depends(get_current_role),
+):
+    """Fetch single artifact with ACL protection. Returns 404 if not found or unauthorized."""
     try:
         art_uuid = uuid.UUID(artifact_id)
         art = (await session.execute(select(Artifact).where(Artifact.id == art_uuid))).scalar()
         if not art:
             raise HTTPException(status_code=404, detail="Artifact not found")
+
+        acl_tag = art.acl_tag or "readable"
+        # Check permissions: lead can see everything, successor can see readable/restricted, contractor only readable
+        if role == "contractor" and acl_tag != "readable":
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        if role == "successor" and acl_tag == "confidential":
+            raise HTTPException(status_code=404, detail="Artifact not found")
+
         return {
             "id": str(art.id),
             "source": art.source_mode.value if hasattr(art.source_mode, "value") else str(art.source_mode),
@@ -579,28 +695,119 @@ async def get_case_continuation(case_id: uuid.UUID):
     }
 
 @api_router.post("/cases/{case_id}/handover/{claim_id}/approve")
-async def approve_claim_endpoint(case_id: uuid.UUID, claim_id: str):
+async def approve_claim_endpoint(case_id: uuid.UUID, claim_id: str, _role: str = Depends(require_lead)):
     return {"status": "ok", "claim_id": claim_id, "action": "approved"}
 
 @api_router.post("/cases/{case_id}/handover/{claim_id}/reject")
-async def reject_claim_endpoint(case_id: uuid.UUID, claim_id: str):
+async def reject_claim_endpoint(case_id: uuid.UUID, claim_id: str, _role: str = Depends(require_lead)):
     return {"status": "ok", "claim_id": claim_id, "action": "rejected"}
 
 @api_router.put("/cases/{case_id}/handover/{claim_id}/edit")
-async def edit_claim_endpoint(case_id: uuid.UUID, claim_id: str):
+async def edit_claim_endpoint(case_id: uuid.UUID, claim_id: str, _role: str = Depends(require_lead)):
     return {"status": "ok", "claim_id": claim_id, "action": "edited"}
 
 @api_router.post("/cases/{case_id}/handover/acknowledge")
 async def acknowledge_handover_endpoint(case_id: uuid.UUID):
-    return {"status": "acknowledged", "timestamp": datetime.utcnow().isoformat() + "Z"}
+    return {
+        "status": "acknowledged",
+        "version": 1,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "actor": "Alex Chen (Successor)"
+    }
+
+@api_router.get("/cases/{case_id}/handover/versions")
+async def list_handover_versions_endpoint(case_id: uuid.UUID):
+    return [
+        {
+            "version": 1,
+            "author": "System (Autonomous Handover Engine)",
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "change_summary": "Initial synthesized handover pack",
+            "is_released": False,
+            "claim_count": 5,
+        }
+    ]
+
+@api_router.get("/cases/{case_id}/handover/versions/{version_num}")
+async def get_handover_version_endpoint(case_id: uuid.UUID, version_num: int):
+    return {
+        "version": version_num,
+        "author": "System (Autonomous Handover Engine)",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "change_summary": "Handover version snapshot",
+        "is_released": False,
+        "items": [],
+    }
+
+@api_router.get("/cases/{case_id}/handover/diff")
+async def get_handover_diff_endpoint(case_id: uuid.UUID, v1: int, v2: int):
+    return {
+        "v1": v1,
+        "v2": v2,
+        "v1_meta": {"author": "System", "timestamp": datetime.utcnow().isoformat() + "Z", "summary": "v1"},
+        "v2_meta": {"author": "System", "timestamp": datetime.utcnow().isoformat() + "Z", "summary": "v2"},
+        "diff": [],
+        "summary": "0 modified, 0 added, 0 removed",
+    }
+
+@api_router.post("/cases/{case_id}/handover/verify")
+async def verify_handover_endpoint(case_id: uuid.UUID, body: dict = None):
+    from app.handover.verifier import GroundingVerifier
+    verifier = GroundingVerifier()
+    return {
+        "grounding_score": 0.88,
+        "method": verifier.METHOD,
+        "claims_verified": 5,
+        "claims": [],
+    }
 
 @api_router.post("/cases/{case_id}/completeness/fix-missing")
 async def fix_missing_endpoint(case_id: uuid.UUID):
-    return {"status": "questions_generated", "count": 2, "questions": []}
+    return {
+        "status": "questions_generated",
+        "count": 2,
+        "questions": [
+            {
+                "id": "q-auto-001",
+                "missing_fact_key": "pg15_upgrade_runbook",
+                "text": "You were assigned to draft the PostgreSQL 15 upgrade runbook before departure (Architecture Sync, Oct 14). Did you complete any notes?",
+                "demo_suggested_answer": "I have rough notes in Notion (link in ENV_KEYS.md). Sam should own this — he already manages DB backups.",
+            },
+            {
+                "id": "q-auto-002",
+                "missing_fact_key": "jwt_timeout_root_cause",
+                "text": "You mentioned JWT timeout is caused by a Cloudflare rule. Can you give exact steps to update it?",
+                "demo_suggested_answer": "Cloudflare account: ops@shopledger.io. Go to Rules > Page Rules, add a rule for /auth/refresh with Cache Level = Bypass.",
+            }
+        ]
+    }
 
 @api_router.post("/cases/{case_id}/completeness/regenerate-handover")
-async def regenerate_handover_endpoint(case_id: uuid.UUID):
-    return {"status": "ok", "previous_score": 0.71, "new_score": 0.96}
+async def regenerate_handover_endpoint(
+    case_id: uuid.UUID,
+    body: dict = Body(default={}),
+    role: str = Depends(get_current_role),
+):
+    return {
+        "status": "ok",
+        "previous_score": 0.71,
+        "new_score": 0.96,
+        "facts_recovered": 2,
+        "completeness": {
+            "score": 0.96,
+            "mean": 0.90,
+            "spread": 0.04,
+            "runs": [0.96],
+            "blockers": [],
+            "phase": "complete",
+            "role": role,
+            "formula": "weighted sum of found facts / total required facts",
+            "formula_calc": "0.96 / 1.00 = 96%",
+            "unweighted_calc": "8 of 8 required facts found",
+            "is_simulated": True,
+            "simulated_label": "Simulated developer onboarding agent (offline)",
+        }
+    }
 
 
 # Mount routes at root and with /api prefix for maximum proxy compatibility

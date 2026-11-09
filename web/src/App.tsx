@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 import { CaseProvider, useCaseLoader, useRole, RelayRole } from "./contexts/CaseContext";
 import { EvidenceDrawerProvider } from "./components/EvidenceDrawer";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import Cases from "./screens/Cases";
 import KnowledgeRadar from "./screens/KnowledgeRadar";
@@ -259,6 +260,7 @@ function AppShell() {
               </label>
               <select
                 id="role-select"
+                aria-label="Demo authentication role switcher"
                 value={role}
                 onChange={(e) => setRole(e.target.value as RelayRole)}
                 className="bg-transparent text-xs font-semibold text-ink-primary focus:outline-none cursor-pointer pr-1"
@@ -268,8 +270,8 @@ function AppShell() {
                 <option value="contractor">Contractor (Public Only)</option>
               </select>
             </div>
-            <span className="text-[9px] uppercase tracking-widest text-ink-disabled font-semibold mt-0.5 select-none">
-              Demo Control
+            <span className="text-[9px] uppercase tracking-widest text-ink-disabled font-semibold mt-0.5 select-none" title="demo authentication — not for production">
+              demo authentication
             </span>
           </div>
         </div>
@@ -281,19 +283,21 @@ function AppShell() {
       {/* ---- Main content ---- */}
       <main className="pt-[57px] lg:pl-[260px] min-h-screen">
         <div className="p-6 lg:p-8 animate-fadeIn">
-          <Routes>
-            <Route path="/" element={<Cases />} />
-            <Route path="/case/:caseId/knowledge" element={<KnowledgeRadar />} />
-            <Route path="/case/:caseId/timeline" element={<WorkTimeline />} />
-            <Route path="/case/:caseId/findings" element={<Findings />} />
-            <Route path="/case/:caseId/interview" element={<Interview />} />
-            <Route path="/case/:caseId/handover" element={<Handover />} />
-            <Route path="/case/:caseId/completeness" element={<CompletenessTest />} />
-            <Route path="/case/:caseId/uncertainty" element={<Uncertainty />} />
-            <Route path="/case/:caseId/decisions" element={<DecisionLog />} />
-            <Route path="/case/:caseId/admin" element={<Admin />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<Cases />} />
+              <Route path="/case/:caseId/knowledge" element={<KnowledgeRadar />} />
+              <Route path="/case/:caseId/timeline" element={<WorkTimeline />} />
+              <Route path="/case/:caseId/findings" element={<Findings />} />
+              <Route path="/case/:caseId/interview" element={<Interview />} />
+              <Route path="/case/:caseId/handover" element={<Handover />} />
+              <Route path="/case/:caseId/completeness" element={<CompletenessTest />} />
+              <Route path="/case/:caseId/uncertainty" element={<Uncertainty />} />
+              <Route path="/case/:caseId/decisions" element={<DecisionLog />} />
+              <Route path="/case/:caseId/admin" element={<Admin />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </div>
       </main>
     </div>

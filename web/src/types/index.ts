@@ -54,6 +54,7 @@ export interface InterviewQuestion {
   answer_provenance?: 'stated' | 'verified' | 'inferred' | string | null
   auto_generated?: boolean
   missing_fact_key?: string
+  demo_suggested_answer?: string
   created_at: string
 }
 
@@ -77,6 +78,24 @@ export interface HandoverItem {
   history?: ClaimHistoryEntry[]
   rejection_reason?: string | null
   original_text?: string | null
+  unsupported_flag?: boolean
+  unsupported_reason?: string
+  grounding?: {
+    score: number
+    method: string
+    is_grounded: boolean
+    provenance: string
+    sentences?: Array<{
+      sentence: string
+      score: number
+      is_grounded: boolean
+      provenance: string
+      reason: string
+      missing_entities?: string[]
+    }>
+    flagged_count?: number
+    flagged_reasons?: string[]
+  }
   created_at: string
 }
 
@@ -84,7 +103,9 @@ export interface RequiredFact {
   kind: string
   key: string
   source: string
-  status: 'found' | 'missing'
+  status: 'found' | 'missing' | 'withheld'
+  weight?: number
+  visibility?: string
 }
 
 export interface CompletenessData {
@@ -93,10 +114,16 @@ export interface CompletenessData {
   mean: number
   spread: number
   runs: number[]
+  phase?: string
   required_facts: RequiredFact[]
   blockers: string[]
-  phase?: string
   grounding_score?: number
+  role?: string
+  formula?: string
+  formula_calc?: string
+  unweighted_calc?: string
+  is_simulated?: boolean
+  simulated_label?: string
 }
 
 export interface MissingEvidence {
@@ -148,4 +175,36 @@ export interface ContinuationTask {
 
 export interface ContinuationData {
   first_5_days: ContinuationTask[]
+}
+
+export interface HandoverVersionSummary {
+  version: number
+  author: string
+  timestamp: string
+  change_summary: string
+  is_released: boolean
+  claim_count: number
+}
+
+export interface HandoverDiffEntry {
+  claim_id: string
+  section: string
+  change_type: 'modified' | 'unchanged' | 'added' | 'removed'
+  v1: {
+    status?: string
+    text?: string
+  } | null
+  v2: {
+    status?: string
+    text?: string
+  } | null
+}
+
+export interface HandoverDiffResponse {
+  v1: number
+  v2: number
+  v1_meta: { author: string; timestamp: string; summary: string; is_released?: boolean }
+  v2_meta: { author: string; timestamp: string; summary: string; is_released?: boolean }
+  diff: HandoverDiffEntry[]
+  summary: string
 }

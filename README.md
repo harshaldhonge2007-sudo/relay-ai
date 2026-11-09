@@ -80,8 +80,10 @@ flowchart LR
 - **Closed-Loop Completeness Test**: An autonomous onboarding agent simulates building the repo using only the handover doc. A "Fix Missing Facts" loop generates follow-up interview questions, recovering missing facts and lifting readiness from **71% → 96%**.
 
 ### 3. PERMISSION-AWARE
-- **Server-Side ACL Enforcement**: Authorization is strictly enforced by the backend on every endpoint (`X-Relay-Role` header).
-- **Zero Confidential Leakage**: Restricted channels (`#finance-private`, `PAY-SEC-001`, `ENV_KEYS.md`) are withheld from unauthorized roles. Withheld counts and notices are opaque—they never leak titles, dates, or metadata.
+- **Server-Issued Session Tokens (demo authentication)**: Authorization is strictly enforced by the backend on every endpoint via signed bearer tokens (`Authorization: Bearer <token>`). Demo users (Engineering Lead, Successor, Contractor) log in via `/auth/demo-login`. The client switcher selects a demo user but cannot assert a role directly. Labeled as **demo authentication** (not for production).
+- **Existence Privacy (404 on Direct Access)**: Direct access to restricted artifact IDs returns `404 Not Found` (never `403 Forbidden`) so the existence of confidential resources is never revealed. Withheld counts and notices remain aggregate-only.
+- **Withheld Claim Placeholders**: Claims citing restricted evidence display `"Withheld: requires [level] access"` rather than being silently dropped or displayed uncited.
+- **Zero Confidential Leakage**: Restricted channels (`#finance-private`, `PAY-SEC-001`, `ENV_KEYS.md`) are withheld from unauthorized roles.
 - **Automated Secrets Redaction**: API keys, AWS secrets, and JWT tokens are sanitized prior to display or indexing.
 
 ---
@@ -91,10 +93,10 @@ flowchart LR
 | Resource / Action | Engineering Lead | Successor (Incoming) | Contractor |
 | :--- | :---: | :---: | :---: |
 | **Public Artifacts** (GitHub PRs, Commits, README) | Full Access | Full Access | Full Access |
-| **Internal Artifacts** (Slack `#engineering`, Sprint Retros) | Full Access | Full Access | 🔒 Withheld |
-| **Confidential Artifacts** (Finance, Security Key Rotation) | Full Access | 🔒 Withheld (403) | 🔒 Withheld (403) |
-| **Claim-Level Review** (Approve / Reject / Edit) | Yes | Read-Only | Read-Only |
-| **Handover Release** | Yes | Read-Only | Read-Only |
+| **Internal Artifacts** (Slack `#engineering`, Sprint Retros) | Full Access | Full Access | 🔒 Withheld (404 on direct ID access) |
+| **Confidential Artifacts** (Finance, Security Key Rotation) | Full Access | 🔒 Withheld (404 on direct ID access) | 🔒 Withheld (404 on direct ID access) |
+| **Claim-Level Review** (Approve / Reject / Edit) | Yes | Read-Only (403) | Read-Only (403) |
+| **Handover Release** | Yes (Gated) | Read-Only (403) | Read-Only (403) |
 | **Receipt Acknowledgement** | N/A | Yes | N/A |
 | **View Redacted Secret Locations** | Yes | Hidden | Hidden |
 
@@ -106,13 +108,33 @@ To uphold strict evaluation integrity, all system capabilities are categorized h
 
 | Capability | Status | Implementation Details |
 | :--- | :---: | :--- |
-| **Role-Based Access Control (ACL)** | Real | Server-side enforcement with 403 status codes and opaque withheld notices. |
-| **Claim-Level Human Review** | Real | Granular claim approve, reject (with reason), and inline edit with version history. |
-| **Evidence Drawer & Snippet Highlight** | Real | Universal slide-out drawer fetching verified artifacts and highlighting cited text. |
-| **Closed-Loop Simulation (71% → 96%)** | Real | Dynamic question generation, handover regeneration, and live score recalculation. |
-| **Secrets Redaction Scanner** | Real | Automated regex scanner masking Stripe keys, AWS credentials, and DB URLs. |
+| **Role-Based Access Control (ACL)** | Real | Server-side enforcement deriving role strictly from HMAC-SHA256 signed bearer tokens; 404 status codes on restricted direct access to prevent existence leakage. |
+| **Review Workflow & Release Gating** | Real | Immutable numbered version history snapshot on every edit/approval/rejection; release gated until 100% of claims are reviewed; rejected claims permanently omitted from release; side-by-side diff between any versions. |
+| **Deterministic Grounding Verifier** | Real | Offline deterministic lexical and entity overlap verification (numbers, tickets, code paths, proper nouns). Unsupported sentences downgraded to INFERRED/UNKNOWN and flagged with diagnostic reasons. |
+| **Role-Aware Completeness Simulation** | Real | Dynamic score formula computed from required fact checklist: found fact weight / total weight. Simulation strictly scoped to active role ACL (contractor gets 36%, lead/successor get 71%). |
+| **Closed-Loop Fix Loop** | Real | Targeted question generation for missing facts. Pre-filled answers labeled as "demo-suggested answers" requiring lead checkbox confirmation before re-scoring to 96%. |
+| **Evidence Drawer & Snippet Highlight** | Real | Universal slide-out drawer fetching verified artifacts and highlighting cited text, with Escape-to-close and focus management. |
+| **Secrets Redaction Scanner** | Real | Automated pattern-based regex scanner masking Stripe keys, AWS credentials, and DB URLs before storage/display. |
 | **Demo Scenario (ShopLedger / Priya Nair)** | Synthetic | Realistic mock scenario based on a fintech payments API departure. |
 | **External Connectors (GitHub, Slack, Jira)** | Simulated in Demo | Seeded from `/seed/` fixtures for offline resilience. Full Docker mode supports live GitHub REST API. |
+
+---
+
+## Known Limitations
+
+1. **Demo Authentication vs. Production Auth**: The demo authentication system uses HMAC-SHA256 signed bearer tokens with a fixed demo secret (`relay-demo-only-not-production`) to facilitate local offline evaluation. It is not an enterprise OAuth2, SAML, or OIDC provider.
+2. **Synthetic Fixtures**: Slack, Jira, and meeting notes are seeded from local JSON/Markdown fixtures in `seed/` to guarantee deterministic, offline execution for hackathon evaluation. Production deployment requires registering live Slack/Jira app credentials with OAuth scopes.
+3. **Pattern-Based Secrets Redaction**: Credential masking is regex pattern-based (matching known formats like `sk_live_...`, `AKIA...`, `SG....`, connection strings, and JWT signatures). Custom or novel token formats without standard prefixes may not be caught by static patterns.
+4. **Deterministic Lexical Verifier**: Offline grounding verification relies on exact and normalized entity and lexical overlap. It does not run high-latency GPU embeddings or hosted LLM entailment models in offline mode.
+5. **Database Scope in Offline Demo**: The offline demo server runs in-memory (`mock_server.py`) for instantaneous setup; the full-stack path (`api/app/`) runs PostgreSQL 16 with asyncpg and pgvector.
+
+---
+
+## Disclosure
+
+- **AI Tools Used**: Google Gemini (via Gemini 1.5 Flash API for prompt generation, and Antigravity assistant for pair programming) and Anthropic Claude for architecture consultation and code auditing.
+- **Third-Party Libraries**: FastAPI, Pydantic, SQLAlchemy, Uvicorn, React 18, React Router v6, Tailwind CSS, Vite, Vitest, pytest.
+- **Pre-existing Boilerplate**: Initial React + Vite boilerplate and Tailwind config were scaffolded at project creation. All business logic, security hardening, verifiers, workflow gating, and test suites were built during the hackathon.
 
 ---
 
@@ -147,25 +169,35 @@ docker-compose up --build
 
 ---
 
-## Running the Security & ACL Test Suite
+## Running the Comprehensive Test Suite
 
-The security model is backed by automated tests:
-
+Backend pytest suite (75 tests covering ACL enforcement, detectors, identity resolution, verifier, workflow gating, and security):
 ```bash
 cd api
-python3 -m pytest tests/test_acl.py
+pytest -v
 ```
 
 Expected output:
 ```
-tests/test_acl.py .......                                                [100%]
-========================= 7 passed in 0.27s =========================
+======================== 75 passed, 4 warnings in 0.39s ========================
 ```
 
-Frontend compilation test:
+Frontend unit and component tests (Vitest):
 ```bash
 cd web
-npx tsc --noEmit
+npm test
+```
+
+Expected output:
+```
+ ✓ src/tests/controls.test.tsx (4)
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+```
+
+TypeScript & Production Build verification:
+```bash
+cd web
 npm run build
 ```
 

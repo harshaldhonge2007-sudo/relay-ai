@@ -12,7 +12,7 @@ interface RoleContextType {
   setRole: (r: RelayRole) => void
 }
 
-const RoleContext = createContext<RoleContextType>({
+export const RoleContext = createContext<RoleContextType>({
   role: 'successor',
   setRole: () => {},
 })
@@ -30,9 +30,14 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [artifacts, _setArtifacts] = useState<Artifact[]>([])
   const [role, setRoleState] = useState<RelayRole>('successor')
 
+  useEffect(() => {
+    setApiRole(role)
+  }, [])
+
   function setRole(r: RelayRole) {
-    setApiRole(r)
-    setRoleState(r)
+    setApiRole(r).then(() => {
+      setRoleState(r)
+    })
   }
 
   return (

@@ -1,7 +1,5 @@
-from .inflight import detect_inflight
-from .hidden_deps import detect_hidden_dependencies
-from .contradictions import detect_contradictions
-from .gaps import detect_gaps
+# lazy imports — individual modules are imported directly by consumers.
+# Eager imports are intentionally omitted to avoid triggering asyncpg at load time.
 
 __all__ = [
     "detect_inflight",

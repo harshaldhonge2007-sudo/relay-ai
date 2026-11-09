@@ -11,6 +11,23 @@ from app.models import (
 )
 
 
+class HiddenDepsDetector:
+    """Detector for hidden environment variables, secrets, and external hostnames."""
+
+    def _extract_env_vars(self, text: str) -> List[str]:
+        pattern = re.compile(r'([A-Z_][A-Z0-9_]{2,})(?:=|\s*=\s*)')
+        return list(set(pattern.findall(text)))
+
+    def _extract_external_hosts(self, text: str) -> List[str]:
+        host_pattern = re.compile(
+            r'(?:https?://|host[\s:=]+|endpoint[\s:=]+)'
+            r'([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z0-9][-a-zA-Z0-9]*)+)',
+            re.IGNORECASE
+        )
+        localhost_pattern = re.compile(r'localhost|127\.0\.0\.1|\.local|\.internal', re.IGNORECASE)
+        return list(set([h for h in host_pattern.findall(text) if not localhost_pattern.search(h)]))
+
+
 async def detect_hidden_dependencies(
     session: AsyncSession, 
     case_id: uuid.UUID

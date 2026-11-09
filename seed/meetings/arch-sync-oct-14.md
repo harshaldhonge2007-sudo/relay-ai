@@ -24,3 +24,4 @@ Attendees: Priya Nair (Staff Eng), Alex Chen (Sr Eng), Sam Rodriguez (DevOps), C
 - Auth Service: Alex Chen (Primary)
 - Payment Processor: Alex Chen (Incoming Primary), Sam Rodriguez (Secondary)
 - Nightly Reports & Ops: Sam Rodriguez (Primary)
+

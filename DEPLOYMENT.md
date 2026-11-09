@@ -125,3 +125,32 @@ docker compose up -d
 - Frontend: `http://localhost:5173`
 - Backend API: `http://localhost:8000`
 - API Health: `http://localhost:8000/health`
+
+---
+
+## Option 4: Zero-Config Judge Demo Link (Static Frontend + Standalone Mock Server)
+
+For hackathon judges and evaluators who need an instant, self-contained preview without setting up PostgreSQL or third-party API keys:
+
+### 1. Deploy Standalone Server on Render / Railway (Free Tier)
+- **Repository**: Connect this repository.
+- **Root Directory**: `api`
+- **Build Command**: `pip install fastapi uvicorn pydantic pydantic-settings python-dotenv`
+- **Start Command**: `python mock_server.py`
+- **Port**: `8000`
+- **Environment Variables**: None required! All data is seeded in-memory and signed tokens are derived with demo secrets.
+- **Health Check**: `GET /health` returns `{"status": "ok"}`.
+
+### 2. Deploy Static Frontend on Vercel
+- **Root Directory**: `web`
+- **Framework**: Vite
+- **Build Command**: `npm run build`
+- **Output Directory**: `dist`
+- **Environment Variable**: `VITE_API_URL=<your-render-mock-server-url>`
+
+### What is Simulated in the Judge Evaluation?
+- **Source Ingestion**: Slack, Jira, GitHub, and meeting notes are realistic synthetic fixtures centered on senior engineer Priya Nair's departure from `ShopLedger`.
+- **Demo Authentication**: Uses signed HMAC-SHA256 bearer tokens for three seeded personas (`lead`, `successor`, `contractor`) to prove server-side role enforcement without requiring an external OAuth provider.
+- **LLM Synthesis**: Operates in deterministic offline replay mode with exact entity grounding verification so evaluation results are instantaneous, zero-cost, and immune to rate limits.
+- **Blind Onboarding Agent**: A deterministic coverage simulation that tests required facts against role permissions.
+

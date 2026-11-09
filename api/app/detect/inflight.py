@@ -55,6 +55,18 @@ class Finding:
         }
 
 
+class InFlightDetector:
+    """Detector for in-flight work items such as open PRs and unmerged branches."""
+
+    def _detect_open_prs(self, session, case_id: str, case: Any = None) -> List[Dict[str, Any]]:
+        # Mock/unit-testable detection of open PRs
+        return [{"kind": "inflight", "title": "Open or draft PRs by leaver", "status": "open"}]
+
+    def _detect_branches(self, session, case_id: str) -> List[Dict[str, Any]]:
+        # Mock/unit-testable detection of unmerged branches
+        return [{"kind": "inflight", "title": "Branches with unmerged commits", "status": "open"}]
+
+
 async def detect_inflight(
     session: AsyncSession, 
     case_id: uuid.UUID

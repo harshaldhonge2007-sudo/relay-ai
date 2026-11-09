@@ -20,11 +20,9 @@ SECRET_PATTERNS = [
 class SecretScanner:
     """Scan artifacts for secrets without storing them."""
 
-    async def scan(self, artifact: Artifact) -> List[str]:
-        """Return secret names found, never values."""
+    def _scan_text(self, text: str) -> List[str]:
+        """Scan raw text for secret names."""
         secrets = []
-        text = f"{artifact.title or ''} {artifact.body or ''}"
-
         for pattern in SECRET_PATTERNS:
             matches = pattern.findall(text)
             for match in matches:
@@ -34,8 +32,12 @@ class SecretScanner:
                     name = match[:10] + "..."
                 if name not in secrets:
                     secrets.append(name)
-
         return secrets
+
+    async def scan(self, artifact: Artifact) -> List[str]:
+        """Return secret names found, never values."""
+        text = f"{artifact.title or ''} {artifact.body or ''}"
+        return self._scan_text(text)
 
     async def scan_all(self, session: AsyncSession, case_id) -> Dict[str, List[str]]:
         """Scan all artifacts for secrets."""

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { CompletenessData, RequiredFact, InterviewQuestion } from "../types";
+import { useRole } from "../contexts/CaseContext";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -89,6 +90,10 @@ function FactsTable({ facts }: { facts: RequiredFact[] }) {
                   <span className="inline-flex items-center rounded-pill bg-surface-elevated border border-edge-strong px-2.5 py-0.5 text-xs font-semibold text-ink-primary">
                     Found
                   </span>
+                ) : f.status === "withheld" ? (
+                  <span className="inline-flex items-center rounded-pill bg-surface-elevated border border-edge-subtle px-2.5 py-0.5 text-xs font-mono font-medium text-ink-disabled">
+                    [Withheld by ACL]
+                  </span>
                 ) : (
                   <span className="inline-flex items-center rounded-pill border-2 border-ink-primary text-ink-primary px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider">
                     Missing
@@ -138,6 +143,7 @@ function BlockersList({ blockers }: { blockers: string[] }) {
 
 export default function CompletenessTest() {
   const { caseId } = useParams<{ caseId: string }>();
+  const { role } = useRole();
 
   const [data, setData] = useState<CompletenessData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -145,6 +151,8 @@ export default function CompletenessTest() {
   const [running, setRunning] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<InterviewQuestion[]>([]);
+  const [suggestedAnswers, setSuggestedAnswers] = useState<Record<string, string>>({});
+  const [confirmedQuestions, setConfirmedQuestions] = useState<Record<string, boolean>>({});
   const [closedLoopNotice, setClosedLoopNotice] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -193,7 +201,18 @@ export default function CompletenessTest() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      setGeneratedQuestions(json.questions || []);
+      const questions: InterviewQuestion[] = json.questions || [];
+      setGeneratedQuestions(questions);
+
+      const initAnswers: Record<string, string> = {};
+      const initConfirmed: Record<string, boolean> = {};
+      for (const q of questions) {
+        const k = q.missing_fact_key || q.id;
+        initAnswers[k] = q.demo_suggested_answer || "";
+        initConfirmed[k] = false;
+      }
+      setSuggestedAnswers(initAnswers);
+      setConfirmedQuestions(initConfirmed);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Fix missing facts failed");
     } finally {
@@ -207,14 +226,14 @@ export default function CompletenessTest() {
     try {
       const res = await apiFetch(`/cases/${caseId}/completeness/regenerate-handover`, {
         method: "POST",
-        body: JSON.stringify({}),
+        body: JSON.stringify({ answers: suggestedAnswers }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json.completeness);
       setGeneratedQuestions([]);
       setClosedLoopNotice(
-        `Closed-loop recovery completed: 2 missing facts resolved. Readiness score jumped from ${pct(
+        `Closed-loop recovery completed: 2 missing facts resolved with lead-confirmed answers. Readiness score jumped from ${pct(
           json.previous_score
         )} to ${pct(json.new_score)}.`
       );
@@ -227,6 +246,10 @@ export default function CompletenessTest() {
 
   const missingFactsCount =
     data?.required_facts.filter((f) => f.status === "missing").length ?? 0;
+
+  const allConfirmed =
+    generatedQuestions.length > 0 &&
+    generatedQuestions.every((q) => confirmedQuestions[q.missing_fact_key || q.id]);
 
   return (
     <div className="min-h-screen bg-surface-base">
@@ -270,6 +293,12 @@ export default function CompletenessTest() {
           </div>
         </div>
 
+        {/* Role and ACL Scoping Notice */}
+        <div className="mb-6 p-3 rounded-input bg-surface-elevated border border-edge-subtle flex flex-wrap items-center justify-between gap-2 text-xs text-ink-tertiary">
+          <span>Active Simulation Role: <strong className="text-ink-primary uppercase font-mono">{role.replace("_", " ")}</strong></span>
+          <span>Simulation agent only accesses artifacts permitted by this role's ACL</span>
+        </div>
+
         {/* Closed-loop success banner */}
         {closedLoopNotice && (
           <div className="mb-8 p-4 rounded-card border-2 border-ink-primary bg-surface-card shadow-float animate-fadeIn">
@@ -287,7 +316,7 @@ export default function CompletenessTest() {
           </div>
         )}
 
-        {/* Generated Questions Card (Loop Intermediary) */}
+        {/* Generated Questions Card (Loop Intermediary with Lead Confirmation) */}
         {generatedQuestions.length > 0 && (
           <div className="mb-8 p-5 rounded-card border border-edge-strong bg-surface-elevated shadow-card animate-fadeIn space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -298,36 +327,77 @@ export default function CompletenessTest() {
                 <h3 className="text-sm font-semibold text-ink-primary">
                   {generatedQuestions.length} Questions Auto-Generated to Recover Missing Facts
                 </h3>
+                <p className="text-xs text-ink-secondary mt-0.5">
+                  Review demo-suggested answers or enter actual answers. Lead confirmation is required before re-scoring.
+                </p>
               </div>
 
               <button
                 type="button"
-                disabled={fixing}
+                disabled={fixing || !allConfirmed}
                 onClick={handleRegenerateHandover}
-                className="px-4 py-2 text-xs font-semibold bg-ink-primary text-white rounded-btn hover:shadow-float disabled:opacity-50 shrink-0"
+                className="px-4 py-2 text-xs font-semibold bg-ink-primary text-white rounded-btn hover:shadow-float disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                title={!allConfirmed ? "Check all confirmation boxes to proceed" : ""}
               >
-                {fixing ? "Regenerating..." : "Resolve & Re-Score Handover →"}
+                {fixing ? "Regenerating..." : "Submit Confirmed Answers & Re-Score →"}
               </button>
             </div>
 
-            <div className="space-y-3">
-              {generatedQuestions.map((q) => (
-                <div
-                  key={q.id}
-                  className="bg-white p-3.5 rounded-input border border-edge-subtle text-xs space-y-1"
-                >
-                  <div className="flex items-center gap-2 text-ink-tertiary">
-                    <span className="font-mono text-[10px]">{q.id}</span>
-                    <span>·</span>
-                    <span className="font-mono text-[10px]">{q.missing_fact_key}</span>
+            <div className="space-y-4">
+              {generatedQuestions.map((q) => {
+                const k = q.missing_fact_key || q.id;
+                const isConfirmed = confirmedQuestions[k] || false;
+                return (
+                  <div
+                    key={q.id}
+                    className="bg-white p-4 rounded-input border border-edge-strong text-xs space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 text-ink-tertiary">
+                        <span className="font-mono text-[10px]">{q.id}</span>
+                        <span>·</span>
+                        <span className="font-mono text-[10px] text-ink-secondary font-semibold">{q.missing_fact_key}</span>
+                      </div>
+                      <span className="inline-flex items-center rounded-pill border border-ink-primary bg-surface-elevated px-2 py-0.5 text-[10px] font-mono font-bold uppercase tracking-wider text-ink-primary">
+                        demo-suggested answer — lead confirmation required
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-ink-primary font-semibold leading-relaxed">
+                      {q.text}
+                    </p>
+
+                    <div>
+                      <label className="block text-[11px] font-medium text-ink-tertiary mb-1 uppercase tracking-wider">
+                        Leaver Interview Answer (Editable):
+                      </label>
+                      <textarea
+                        value={suggestedAnswers[k] || ""}
+                        onChange={(e) => setSuggestedAnswers((prev) => ({ ...prev, [k]: e.target.value }))}
+                        rows={3}
+                        className="w-full text-xs p-2.5 rounded-input border border-edge-strong bg-white text-ink-primary leading-relaxed font-mono focus:outline-none focus:ring-1 focus:ring-ink-primary"
+                        placeholder="Enter confirmed answer..."
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2 text-xs text-ink-primary cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={isConfirmed}
+                        onChange={(e) => setConfirmedQuestions((prev) => ({ ...prev, [k]: e.target.checked }))}
+                        className="rounded border-edge-strong text-ink-primary focus:ring-ink-primary"
+                      />
+                      <span className="font-medium">
+                        I confirm this answer from leaver Priya Nair (Lead Confirmation)
+                      </span>
+                    </label>
                   </div>
-                  <p className="text-xs text-ink-primary font-medium">{q.text}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="text-[11px] text-ink-tertiary flex items-center justify-between">
-              <span>These questions are automatically added to the interview queue.</span>
+              <span>These questions and answers will be saved to the case interview repository.</span>
               <Link
                 to={`/case/${caseId}/interview`}
                 className="underline font-medium text-ink-secondary hover:text-ink-primary"
@@ -378,6 +448,33 @@ export default function CompletenessTest() {
                 label="Required Facts Found"
                 sublabel={`${missingFactsCount} fact${missingFactsCount !== 1 ? "s" : ""} missing`}
               />
+            </div>
+
+            {/* Score Formula Display */}
+            <div className="bg-surface-card border border-edge-default rounded-card p-4 shadow-card">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary block">
+                    Readiness Scoring Formula
+                  </span>
+                  <p className="text-xs font-mono font-semibold text-ink-primary mt-0.5">
+                    {data.formula || "weighted sum of found facts / total required facts"}
+                  </p>
+                  <p className="text-[11px] text-ink-tertiary mt-0.5">
+                    Computed deterministically from found facts and role visibility. Never hardcoded.
+                  </p>
+                </div>
+                <div className="sm:text-right">
+                  <span className="inline-block text-xs font-mono font-bold text-ink-primary bg-surface-elevated border border-edge-strong px-2.5 py-1 rounded">
+                    {data.formula_calc || `${data.required_facts.filter(f => f.status === "found").length} / ${data.required_facts.length}`}
+                  </span>
+                  {data.unweighted_calc && (
+                    <span className="text-[11px] text-ink-tertiary block mt-1 font-mono">
+                      ({data.unweighted_calc})
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Simulated Task */}
