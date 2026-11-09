@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uuid
@@ -13,6 +13,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+router = APIRouter()
 
 CASE_ID = "case-001"
 PRIYA_ID = "person-001"
@@ -492,19 +494,19 @@ def generate_default_data():
 
 db = generate_default_data()
 
-@app.get("/health")
+@router.get("/health")
 async def health():
     return {"status": "ok", "version": "0.1.0", "mode": "standalone_live"}
 
-@app.get("/")
+@router.get("/")
 async def root():
     return {"app": "RELAY AI", "version": "0.1.0", "status": "ready"}
 
-@app.get("/cases")
+@router.get("/cases")
 async def list_cases():
     return db["cases"]
 
-@app.post("/cases")
+@router.post("/cases")
 async def create_case(body: dict = Body(...)):
     new_case = {
         "id": f"case-{uuid.uuid4().hex[:6]}",
@@ -519,7 +521,7 @@ async def create_case(body: dict = Body(...)):
     db["cases"].insert(0, new_case)
     return new_case
 
-@app.get("/cases/{case_id}")
+@router.get("/cases/{case_id}")
 async def get_case(case_id: str):
     for c in db["cases"]:
         if c["id"] == case_id:
@@ -527,27 +529,27 @@ async def get_case(case_id: str):
     # Return default case if not found to avoid blank page
     return db["cases"][0]
 
-@app.get("/cases/{case_id}/components")
+@router.get("/cases/{case_id}/components")
 async def get_components(case_id: str):
     return db["components"]
 
-@app.get("/cases/{case_id}/knowledge")
+@router.get("/cases/{case_id}/knowledge")
 async def get_knowledge(case_id: str):
     return db["knowledge_scores"]
 
-@app.get("/cases/{case_id}/artifacts")
+@router.get("/cases/{case_id}/artifacts")
 async def get_artifacts(case_id: str):
     return db["artifacts"]
 
-@app.get("/cases/{case_id}/findings")
+@router.get("/cases/{case_id}/findings")
 async def get_findings(case_id: str):
     return db["findings"]
 
-@app.get("/cases/{case_id}/questions")
+@router.get("/cases/{case_id}/questions")
 async def get_questions(case_id: str):
     return db["questions"]
 
-@app.post("/cases/{case_id}/questions/{question_id}/answer")
+@router.post("/cases/{case_id}/questions/{question_id}/answer")
 async def answer_question(case_id: str, question_id: str, body: dict = Body(...)):
     for q in db["questions"]:
         if q["id"] == question_id:
@@ -556,29 +558,29 @@ async def answer_question(case_id: str, question_id: str, body: dict = Body(...)
             return {"status": "ok", "question": q}
     return {"status": "ok"}
 
-@app.get("/cases/{case_id}/handover")
+@router.get("/cases/{case_id}/handover")
 async def get_handover(case_id: str):
     return db["handover"]
 
-@app.post("/cases/{case_id}/handover/approve")
+@router.post("/cases/{case_id}/handover/approve")
 async def approve_handover(case_id: str):
     for c in db["cases"]:
         if c["id"] == case_id:
             c["status"] = "approved"
     return {"status": "approved"}
 
-@app.post("/cases/{case_id}/handover/release")
+@router.post("/cases/{case_id}/handover/release")
 async def release_handover(case_id: str):
     for c in db["cases"]:
         if c["id"] == case_id:
             c["status"] = "released"
     return {"status": "released"}
 
-@app.get("/cases/{case_id}/completeness")
+@router.get("/cases/{case_id}/completeness")
 async def get_completeness(case_id: str):
     return db["completeness"]
 
-@app.post("/cases/{case_id}/completeness/run")
+@router.post("/cases/{case_id}/completeness/run")
 async def run_completeness(case_id: str):
     # Simulate a new run
     db["completeness"]["score"] = 0.91
@@ -586,21 +588,24 @@ async def run_completeness(case_id: str):
     db["completeness"]["mean"] = round(sum(db["completeness"]["runs"]) / len(db["completeness"]["runs"]), 2)
     return db["completeness"]
 
-@app.get("/cases/{case_id}/admin")
+@router.get("/cases/{case_id}/admin")
 async def get_admin_data(case_id: str):
     return db["admin"]
 
-@app.get("/people/{person_id}")
+@router.get("/people/{person_id}")
 async def get_person(person_id: str):
     if person_id in db["people"]:
         return db["people"][person_id]
     return {"id": person_id, "display_name": "Team Member"}
 
-@app.post("/demo/seed")
+@router.post("/demo/seed")
 async def demo_seed():
     global db
     db = generate_default_data()
     return {"status": "ok", "message": "Demo data refreshed successfully"}
+
+app.include_router(router)
+app.include_router(router, prefix="/api")
 
 if __name__ == "__main__":
     import uvicorn
