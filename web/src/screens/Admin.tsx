@@ -1,16 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { API_PREFIX } from "../apiConfig";
-
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
+import { apiFetch } from "../api";
+import { useRole } from "../contexts/CaseContext";
 
 interface Source {
   source: string;
   status: string;
   last_synced: string;
-  items: number;
+  items: string | number;
 }
 
 interface IdentityMapping {
@@ -18,7 +15,7 @@ interface IdentityMapping {
   github: string;
   slack: string;
   jira: string;
-  confidence: number;
+  confidence: string | number;
 }
 
 interface AuditEntry {
@@ -27,125 +24,28 @@ interface AuditEntry {
   action: string;
 }
 
+interface RedactionLocation {
+  artifact_id: string;
+  type: string;
+  location: string;
+}
+
+interface RedactionsInfo {
+  count: number;
+  locations: RedactionLocation[];
+  policy: string;
+}
+
 interface AdminData {
   sources: Source[];
   identity_mappings: IdentityMapping[];
   audit_log: AuditEntry[];
+  redactions?: RedactionsInfo;
 }
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-function confidenceLabel(c: number): string {
-  if (c >= 0.9) return "High";
-  if (c >= 0.7) return "Medium";
-  return "Low";
-}
-
-function formatTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Fixture data (used when the API is unavailable)                    */
-/* ------------------------------------------------------------------ */
-
-const FIXTURE: AdminData = {
-  sources: [
-    {
-      source: "GitHub",
-      status: "Connected & Synced",
-      last_synced: "2026-11-05T22:14:00Z",
-      items: 1_247,
-    },
-    {
-      source: "Slack",
-      status: "Connected & Synced",
-      last_synced: "2026-11-05T23:01:00Z",
-      items: 8_432,
-    },
-    {
-      source: "Jira",
-      status: "Connected & Synced",
-      last_synced: "2026-11-05T21:45:00Z",
-      items: 312,
-    },
-    {
-      source: "Confluence",
-      status: "Pending Initial Sync",
-      last_synced: "",
-      items: 0,
-    },
-  ],
-  identity_mappings: [
-    {
-      name: "Priya Nair",
-      github: "priya-nair",
-      slack: "@priya (U12345)",
-      jira: "jira_priya",
-      confidence: 0.95,
-    },
-    {
-      name: "Marcus Chen",
-      github: "mchen-dev",
-      slack: "@marcus.chen (U67890)",
-      jira: "jira_marcus",
-      confidence: 0.88,
-    },
-    {
-      name: "Alex Rivera",
-      github: "arivera",
-      slack: "@alex.r (U11223)",
-      jira: "jira_alex",
-      confidence: 0.72,
-    },
-  ],
-  audit_log: [
-    {
-      time: "2026-11-05T23:10:00Z",
-      actor: "System",
-      action: "Slack source sync completed — 142 new messages ingested",
-    },
-    {
-      time: "2026-11-05T22:14:00Z",
-      actor: "System",
-      action: "GitHub source sync completed — 18 new commits indexed",
-    },
-    {
-      time: "2026-11-05T21:45:00Z",
-      actor: "System",
-      action: "Jira source sync completed — 5 updated tickets",
-    },
-    {
-      time: "2026-11-05T20:00:00Z",
-      actor: "Admin",
-      action: 'Added new source "Confluence" with pending status',
-    },
-    {
-      time: "2026-11-05T18:30:00Z",
-      actor: "System",
-      action: "Identity resolution run — 3 profiles matched across platforms",
-    },
-  ],
-};
-
-/* ------------------------------------------------------------------ */
-/*  Component                                                          */
-/* ------------------------------------------------------------------ */
 
 const Admin: React.FC = () => {
   const { caseId } = useParams<{ caseId: string }>();
+  const { role } = useRole();
   const [data, setData] = useState<AdminData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -153,13 +53,15 @@ const Admin: React.FC = () => {
     let cancelled = false;
 
     async function load() {
+      setLoading(true);
       try {
-        const res = await fetch(`${API_PREFIX}/cases/${caseId}/admin`);
-        if (!res.ok) throw new Error("api");
-        const json: AdminData = await res.json();
-        if (!cancelled) setData(json);
+        const res = await apiFetch(`/cases/${caseId}/admin`);
+        if (res.ok) {
+          const json: AdminData = await res.json();
+          if (!cancelled) setData(json);
+        }
       } catch {
-        if (!cancelled) setData(FIXTURE);
+        // keep prior state or fallback
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -169,14 +71,13 @@ const Admin: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [caseId]);
+  }, [caseId, role]);
 
-  /* ---- loading skeleton ---- */
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-base p-6 md:p-10 flex items-center justify-center">
-        <p className="text-ink-tertiary text-sm animate-pulse">
-          Loading administration data...
+        <p className="text-ink-tertiary text-xs animate-pulse">
+          Loading administration panel...
         </p>
       </div>
     );
@@ -184,20 +85,73 @@ const Admin: React.FC = () => {
 
   if (!data) return null;
 
-  const { sources, identity_mappings, audit_log } = data;
+  const { sources, identity_mappings, audit_log, redactions } = data;
 
   return (
-    <div className="min-h-screen bg-surface-base p-6 md:p-10 font-['Inter',sans-serif]">
-      {/* ---------- Page title ---------- */}
-      <h1 className="text-2xl font-semibold text-ink-primary mb-8 animate-fadeIn">
-        Administration
-      </h1>
+    <div className="min-h-screen bg-surface-base p-6 md:p-10 font-sans animate-fadeIn">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-3 mb-1">
+          <h1 className="text-2xl font-semibold text-ink-primary">
+            Administration & Security
+          </h1>
+          <span className="rounded-pill bg-surface-elevated border border-edge-default px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-ink-secondary">
+            Permissions & Ingest
+          </span>
+        </div>
+        <p className="text-xs text-ink-secondary">
+          Data connector configurations, identity deduplication mappings, secrets redactions, and immutable audit logs.
+        </p>
+      </div>
 
-      {/* ========================================================== */}
-      {/*  Section 1 — Connected Sources                             */}
-      {/* ========================================================== */}
-      <section className="mb-10 animate-fadeIn" style={{ animationDelay: "60ms" }}>
-        <h2 className="text-lg font-semibold text-ink-primary mb-4">
+      {/* Synthetic Dataset Notice */}
+      <div className="mb-8 p-3 rounded-input bg-surface-elevated border border-edge-subtle flex items-center justify-between text-xs text-ink-tertiary">
+        <span>Synthetic dataset: "ShopLedger — Priya Nair Departure". External APIs simulated.</span>
+        <span>Role: <strong className="uppercase font-mono text-ink-primary">{role.replace("_", " ")}</strong></span>
+      </div>
+
+      {/* Redactions & Secret Scanning Panel (Engineering Lead Only) */}
+      {redactions && (
+        <section className="mb-10 p-5 rounded-card border-2 border-ink-primary bg-surface-card shadow-card animate-fadeIn">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-ink-primary" />
+              <h2 className="text-base font-semibold text-ink-primary">
+                Automated Secrets Redaction
+              </h2>
+            </div>
+            <span className="rounded-pill bg-surface-elevated border border-edge-strong px-2.5 py-0.5 text-xs font-semibold text-ink-primary">
+              {redactions.count} Secrets Redacted
+            </span>
+          </div>
+
+          <p className="text-xs text-ink-secondary leading-relaxed mb-4">
+            {redactions.policy}
+          </p>
+
+          <div className="bg-surface-elevated rounded-input p-3 border border-edge-subtle">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-ink-tertiary block mb-2">
+              Redacted Locations (Values Masked)
+            </span>
+            <div className="space-y-1.5 font-mono text-xs">
+              {redactions.locations.map((loc, idx) => (
+                <div key={idx} className="flex items-center justify-between text-ink-secondary">
+                  <span>
+                    <strong className="text-ink-primary">{loc.type.toUpperCase()}:</strong> {loc.location}
+                  </span>
+                  <span className="text-[11px] text-ink-disabled font-normal">
+                    {loc.artifact_id}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Section 1 — Connected Sources */}
+      <section className="mb-10">
+        <h2 className="text-base font-semibold text-ink-primary mb-4">
           Connected Sources
         </h2>
 
@@ -205,99 +159,92 @@ const Admin: React.FC = () => {
           {sources.map((s) => (
             <div
               key={s.source}
-              className="bg-surface-card shadow-card rounded-card p-5 transition-transform duration-200 hover:-translate-y-px"
+              className="bg-surface-card border border-edge-default shadow-card rounded-card p-5 transition-transform duration-200 hover:-translate-y-px"
             >
-              <p className="font-semibold text-lg text-ink-primary mb-1">
-                {s.source}
-              </p>
-
-              <p className="text-ink-secondary text-sm flex items-center gap-2 mb-1">
-                <span className="inline-block w-2 h-2 rounded-full bg-ink-primary flex-shrink-0" />
-                {s.status}
-              </p>
-
-              {s.last_synced && (
-                <p className="text-sm text-ink-tertiary mb-1">
-                  Last synced: {formatTime(s.last_synced)}
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-semibold text-base text-ink-primary">
+                  {s.source}
                 </p>
-              )}
-
-              <p className="text-sm text-ink-secondary">
-                {s.items.toLocaleString()} items
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ========================================================== */}
-      {/*  Section 2 — Identity Resolution                           */}
-      {/* ========================================================== */}
-      <section className="mb-10 animate-fadeIn" style={{ animationDelay: "120ms" }}>
-        <h2 className="text-lg font-semibold text-ink-primary mb-4">
-          Identity Resolution
-        </h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {identity_mappings.map((m) => (
-            <div
-              key={m.name}
-              className="bg-surface-card shadow-card rounded-card p-5 transition-transform duration-200 hover:-translate-y-px"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <p className="font-medium text-ink-primary">{m.name}</p>
-                <span className="rounded-pill bg-surface-elevated text-ink-secondary text-xs px-2.5 py-0.5">
-                  {confidenceLabel(m.confidence)} ({Math.round(m.confidence * 100)}%)
+                <span className="text-xs text-ink-disabled font-mono">
+                  {s.last_synced}
                 </span>
               </div>
 
-              <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+              <p className="text-ink-secondary text-xs flex items-center gap-2 mb-2">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-ink-primary shrink-0" />
+                {s.status}
+              </p>
+
+              <p className="text-xs text-ink-tertiary">
+                {typeof s.items === "number" ? `${s.items.toLocaleString()} items` : s.items}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Section 2 — Identity Resolution */}
+      <section className="mb-10">
+        <h2 className="text-base font-semibold text-ink-primary mb-4">
+          Identity Resolution
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {identity_mappings.map((m) => (
+            <div
+              key={m.name}
+              className="bg-surface-card border border-edge-default shadow-card rounded-card p-4 space-y-2.5"
+            >
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-xs text-ink-primary">{m.name}</p>
+                <span className="rounded-pill bg-surface-elevated text-ink-secondary text-[10px] px-2 py-0.5 border border-edge-subtle">
+                  {typeof m.confidence === "number" ? `${Math.round(m.confidence * 100)}%` : m.confidence}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1 text-xs">
                 <span className="text-ink-tertiary">GitHub:</span>
-                <span className="text-ink-secondary">{m.github}</span>
+                <span className="text-ink-secondary font-mono truncate">{m.github}</span>
 
                 <span className="text-ink-tertiary">Slack:</span>
-                <span className="text-ink-secondary">{m.slack}</span>
+                <span className="text-ink-secondary font-mono truncate">{m.slack}</span>
 
                 <span className="text-ink-tertiary">Jira:</span>
-                <span className="text-ink-secondary">{m.jira}</span>
+                <span className="text-ink-secondary font-mono truncate">{m.jira}</span>
               </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ========================================================== */}
-      {/*  Section 3 — Audit Log                                     */}
-      {/* ========================================================== */}
-      <section className="animate-fadeIn" style={{ animationDelay: "180ms" }}>
-        <h2 className="text-lg font-semibold text-ink-primary mb-4">
-          Audit Log
+      {/* Section 3 — Immutable Audit Log */}
+      <section>
+        <h2 className="text-base font-semibold text-ink-primary mb-4">
+          Audit Trail
         </h2>
 
-        <div className="bg-surface-card shadow-card rounded-card overflow-hidden">
+        <div className="bg-surface-card border border-edge-default shadow-card rounded-card overflow-hidden">
           {audit_log.map((entry, idx) => (
             <div
               key={idx}
-              className={`flex flex-col md:flex-row md:items-start px-5 py-3 ${
-                idx < audit_log.length - 1
-                  ? "border-b border-edge-subtle"
-                  : ""
+              className={`flex flex-col md:flex-row md:items-start px-5 py-3 text-xs ${
+                idx < audit_log.length - 1 ? "border-b border-edge-subtle" : ""
               }`}
             >
-              <span className="text-sm text-ink-tertiary md:w-32 flex-shrink-0 mb-0.5 md:mb-0">
-                {formatTime(entry.time)}
+              <span className="text-ink-tertiary md:w-32 shrink-0 font-mono mb-0.5 md:mb-0">
+                {entry.time}
               </span>
-              <span className="font-medium text-ink-primary md:w-40 flex-shrink-0 mb-0.5 md:mb-0">
+              <span className="font-semibold text-ink-primary md:w-48 shrink-0 mb-0.5 md:mb-0">
                 {entry.actor}
               </span>
-              <span className="text-ink-secondary text-sm flex-1">
+              <span className="text-ink-secondary flex-1 leading-relaxed">
                 {entry.action}
               </span>
             </div>
           ))}
 
           {audit_log.length === 0 && (
-            <p className="px-5 py-6 text-ink-tertiary text-sm text-center">
+            <p className="px-5 py-6 text-ink-tertiary text-xs text-center">
               No audit log entries.
             </p>
           )}

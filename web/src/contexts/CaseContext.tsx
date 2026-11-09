@@ -1,7 +1,21 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
 import { Case, Artifact } from '../types'
-import { API_PREFIX } from '../apiConfig'
+import { apiFetch } from '../api'
+import { RelayRole, setApiRole } from '../api'
+
+// Re-export for convenience
+export type { RelayRole }
+
+interface RoleContextType {
+  role: RelayRole
+  setRole: (r: RelayRole) => void
+}
+
+const RoleContext = createContext<RoleContextType>({
+  role: 'successor',
+  setRole: () => {},
+})
 
 interface CaseContextType {
   caseData: Case | null
@@ -14,12 +28,24 @@ const CaseContext = createContext<CaseContextType | undefined>(undefined)
 export function CaseProvider({ children }: { children: ReactNode }) {
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [artifacts, _setArtifacts] = useState<Artifact[]>([])
+  const [role, setRoleState] = useState<RelayRole>('successor')
+
+  function setRole(r: RelayRole) {
+    setApiRole(r)
+    setRoleState(r)
+  }
 
   return (
-    <CaseContext.Provider value={{ caseData, setCaseData, artifacts }}>
-      {children}
-    </CaseContext.Provider>
+    <RoleContext.Provider value={{ role, setRole }}>
+      <CaseContext.Provider value={{ caseData, setCaseData, artifacts }}>
+        {children}
+      </CaseContext.Provider>
+    </RoleContext.Provider>
   )
+}
+
+export function useRole() {
+  return useContext(RoleContext)
 }
 
 export function useCase() {
@@ -37,15 +63,14 @@ export function useCaseLoader(explicitCaseId?: string) {
   const [loading, setLoading] = useState(false)
   const { caseData, setCaseData } = useCase()
 
-  // Extract caseId from explicit arg, params, or URL path
   const pathMatch = location.pathname.match(/^\/case\/([^/]+)/)
   const caseId = explicitCaseId || params.caseId || params.id || (pathMatch ? pathMatch[1] : undefined)
 
   useEffect(() => {
     if (!caseId) return
-    if (caseData?.id === caseId) return  // already loaded
+    if (caseData?.id === caseId) return
     setLoading(true)
-    fetch(`${API_PREFIX}/cases/${caseId}`)
+    apiFetch(`/cases/${caseId}`)
       .then(r => r.json())
       .then(d => { if (d.id) setCaseData(d) })
       .catch(() => {})

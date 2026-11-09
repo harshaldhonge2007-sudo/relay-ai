@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Artifact, AuditLog
 

@@ -1,33 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { API_PREFIX } from "../apiConfig";
+import { apiFetch } from "../api";
+import { useEvidenceDrawer } from "../components/EvidenceDrawer";
+import { useRole } from "../contexts/CaseContext";
+import { Artifact } from "../types";
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                             */
-/* ------------------------------------------------------------------ */
+type FilterSource = "All" | "GitHub" | "Slack" | "Jira" | "Docs" | "Meetings";
 
-interface Artifact {
-  id: string;
-  source: string;
-  source_mode: string;
-  type: string;
-  external_id: string;
-  author_id: string;
-  occurred_at: string;
-  url: string;
-  title: string;
-  body: string;
-  raw: Record<string, unknown>;
-  acl_tag: string;
-}
-
-type FilterSource = "All" | "GitHub" | "Slack" | "Jira" | "Docs";
-
-const FILTER_OPTIONS: FilterSource[] = ["All", "GitHub", "Slack", "Jira", "Docs"];
-
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                           */
-/* ------------------------------------------------------------------ */
+const FILTER_OPTIONS: FilterSource[] = ["All", "GitHub", "Slack", "Jira", "Docs", "Meetings"];
 
 function formatTimestamp(iso: string): string {
   const date = new Date(iso);
@@ -50,22 +30,25 @@ function formatTimestamp(iso: string): string {
 }
 
 function normalizeSource(source: string): string {
-  return source.charAt(0).toUpperCase() + source.slice(1).toLowerCase();
+  if (!source) return "Docs";
+  const s = source.toLowerCase();
+  if (s === "github") return "GitHub";
+  if (s === "slack") return "Slack";
+  if (s === "jira") return "Jira";
+  if (s === "docs") return "Docs";
+  if (s === "meetings") return "Meetings";
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
-
-/* ------------------------------------------------------------------ */
-/*  TimelineCard                                                      */
-/* ------------------------------------------------------------------ */
 
 interface TimelineCardProps {
   artifact: Artifact;
   index: number;
+  onInspect: (art: Artifact) => void;
 }
 
-function TimelineCard({ artifact, index }: TimelineCardProps) {
+function TimelineCard({ artifact, index, onInspect }: TimelineCardProps) {
   const [expanded, setExpanded] = useState(false);
-
-  const hasBody = artifact.body && artifact.body.trim().length > 0;
+  const hasBody = Boolean(artifact.body && artifact.body.trim().length > 0);
 
   return (
     <div className="relative flex items-start gap-4 pl-6">
@@ -77,223 +60,92 @@ function TimelineCard({ artifact, index }: TimelineCardProps) {
 
       {/* Card */}
       <div
-        className="flex-1 bg-surface-card shadow-card rounded-card p-4 animate-fadeIn opacity-0"
+        className="flex-1 bg-surface-card border border-edge-default shadow-card rounded-card p-4 transition-transform hover:-translate-y-px animate-fadeIn"
         style={{
-          animationDelay: `${index * 50}ms`,
-          animationFillMode: "forwards",
+          animationDelay: `${index * 40}ms`,
+          animationFillMode: "both",
         }}
       >
         {/* Top row: source label + timestamp */}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className="uppercase text-xs tracking-wider font-medium text-ink-tertiary">
+            <span className="uppercase text-xs tracking-wider font-semibold text-ink-tertiary">
               {artifact.source.toUpperCase()}
             </span>
             {artifact.source_mode && (
-              <span className="text-xs text-ink-disabled">
+              <span className="text-[11px] text-ink-disabled font-mono">
                 ({artifact.source_mode})
               </span>
             )}
+            {artifact.type && (
+              <span className="text-[11px] text-ink-tertiary">
+                · {artifact.type.replace("_", " ")}
+              </span>
+            )}
           </div>
-          <span className="text-sm text-ink-tertiary whitespace-nowrap">
+          <span className="text-xs text-ink-tertiary whitespace-nowrap font-mono">
             {formatTimestamp(artifact.occurred_at)}
           </span>
         </div>
 
         {/* Title */}
-        <h3 className="font-medium text-ink-primary leading-snug mb-1">
-          {artifact.title || "Untitled artifact"}
+        <h3 className="font-medium text-ink-primary text-sm leading-snug mb-1">
+          {artifact.title || artifact.external_id || "Untitled artifact"}
         </h3>
 
-        {/* Body */}
+        {/* Body snippet */}
         {hasBody && (
-          <button
-            type="button"
-            onClick={() => setExpanded((prev) => !prev)}
-            className="w-full text-left mt-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-tertiary rounded-sm"
-          >
+          <div className="mt-2 text-xs text-ink-secondary bg-surface-elevated p-2.5 rounded-input border border-edge-subtle">
             <p
-              className={`text-sm text-ink-secondary leading-relaxed whitespace-pre-wrap break-words transition-all duration-200 ${
+              className={`leading-relaxed whitespace-pre-wrap ${
                 expanded ? "" : "line-clamp-2"
               }`}
             >
               {artifact.body}
             </p>
-            <span className="text-xs text-ink-tertiary mt-1 inline-block hover:text-ink-secondary transition-colors duration-200">
-              {expanded ? "Show less" : "Show more"}
-            </span>
-          </button>
-        )}
-
-        {/* External link */}
-        {artifact.url && (
-          <a
-            href={artifact.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 mt-3 text-sm text-ink-secondary hover:text-ink-primary transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-tertiary rounded-sm"
-          >
-            View source
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              className="shrink-0"
-              aria-hidden="true"
+            <button
+              type="button"
+              onClick={() => setExpanded((prev) => !prev)}
+              className="text-[11px] font-medium text-ink-tertiary mt-1.5 hover:text-ink-primary transition-colors underline"
             >
-              <path
-                d="M6 3h7v7M13 3L5 11"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  FilterPill                                                        */
-/* ------------------------------------------------------------------ */
-
-interface FilterPillProps {
-  label: FilterSource;
-  active: boolean;
-  onClick: () => void;
-}
-
-function FilterPill({ label, active, onClick }: FilterPillProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`
-        px-4 py-1.5 text-sm font-medium rounded-pill transition-all duration-200
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-tertiary focus-visible:ring-offset-2
-        ${
-          active
-            ? "bg-ink-primary text-white shadow-sm"
-            : "bg-surface-elevated text-ink-secondary border border-edge-default hover:bg-edge-default"
-        }
-      `}
-    >
-      {label}
-    </button>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  EmptyState                                                        */
-/* ------------------------------------------------------------------ */
-
-function EmptyState({ filter }: { filter: FilterSource }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 animate-fadeIn">
-      <div className="w-12 h-12 rounded-full bg-surface-elevated flex items-center justify-center mb-4">
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M12 8v4l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            stroke="#888888"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </div>
-      <p className="text-ink-secondary text-sm">
-        {filter === "All"
-          ? "No artifacts found for this case."
-          : `No ${filter} artifacts found.`}
-      </p>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  LoadingSkeleton                                                   */
-/* ------------------------------------------------------------------ */
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-6 pl-6">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex items-start gap-4">
-          <div className="flex-1 bg-surface-card shadow-card rounded-card p-4 animate-pulse">
-            <div className="flex items-center justify-between mb-3">
-              <div className="h-3 w-16 bg-surface-elevated rounded" />
-              <div className="h-3 w-12 bg-surface-elevated rounded" />
-            </div>
-            <div className="h-4 w-3/4 bg-surface-elevated rounded mb-2" />
-            <div className="h-3 w-full bg-surface-elevated rounded mb-1" />
-            <div className="h-3 w-2/3 bg-surface-elevated rounded" />
+              {expanded ? "Show less" : "Show full snippet"}
+            </button>
           </div>
+        )}
+
+        {/* Action row */}
+        <div className="mt-3 pt-2 border-t border-edge-subtle flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => onInspect(artifact)}
+            className="text-xs font-medium text-ink-primary underline hover:text-ink-secondary"
+          >
+            Inspect in Drawer →
+          </button>
+
+          {artifact.url && (
+            <a
+              href={artifact.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-ink-tertiary hover:text-ink-primary transition-colors"
+            >
+              External link ↗
+            </a>
+          )}
         </div>
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  ErrorBanner                                                       */
-/* ------------------------------------------------------------------ */
-
-function ErrorBanner({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-20 animate-fadeIn">
-      <div className="w-12 h-12 rounded-full bg-surface-elevated flex items-center justify-center mb-4">
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="M12 9v4m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
-            stroke="#888888"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
       </div>
-      <p className="text-ink-secondary text-sm mb-3">{message}</p>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="px-4 py-1.5 text-sm font-medium rounded-btn bg-ink-primary text-white hover:opacity-90 transition-opacity duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-tertiary focus-visible:ring-offset-2"
-      >
-        Retry
-      </button>
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ */
-/*  WorkTimeline (page)                                               */
-/* ------------------------------------------------------------------ */
 
 export default function WorkTimeline() {
   const { caseId } = useParams<{ caseId: string }>();
+  const { role } = useRole();
+  const { openDrawer } = useEvidenceDrawer();
 
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [withheldNotice, setWithheldNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<FilterSource>("All");
@@ -304,18 +156,21 @@ export default function WorkTimeline() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_PREFIX}/cases/${caseId}/artifacts`);
+      const res = await apiFetch(`/cases/${caseId}/artifacts`);
       if (!res.ok) {
         throw new Error(`Failed to load artifacts (${res.status})`);
       }
-      const data: Artifact[] = await res.json();
+      const data = await res.json();
+      const items: Artifact[] = Array.isArray(data) ? data : data.items || [];
+      const notice: string | null = data.withheld_notice ?? null;
+
       // Sort newest first
-      data.sort(
+      items.sort(
         (a, b) =>
-          new Date(b.occurred_at).getTime() -
-          new Date(a.occurred_at).getTime()
+          new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime()
       );
-      setArtifacts(data);
+      setArtifacts(items);
+      setWithheldNotice(notice);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "An unexpected error occurred."
@@ -323,28 +178,65 @@ export default function WorkTimeline() {
     } finally {
       setLoading(false);
     }
-  }, [caseId]);
+  }, [caseId, role]);
 
   useEffect(() => {
     fetchArtifacts();
   }, [fetchArtifacts]);
 
-  /* Filter artifacts */
+  const handleInspect = (art: Artifact) => {
+    openDrawer(
+      [
+        {
+          artifact_id: art.id,
+          title: art.title,
+          source: art.source,
+          source_mode: art.source_mode,
+          type: art.type,
+          external_id: art.external_id,
+          occurred_at: art.occurred_at,
+          url: art.url,
+          body: art.body,
+        },
+      ],
+      art.title
+    );
+  };
+
   const filtered =
     activeFilter === "All"
       ? artifacts
-      : artifacts.filter(
-          (a) =>
-            normalizeSource(a.source) === activeFilter
-        );
+      : artifacts.filter((a) => normalizeSource(a.source) === activeFilter);
 
   return (
     <div className="min-h-screen bg-surface-base">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
         {/* Header */}
-        <h1 className="text-2xl font-semibold text-ink-primary mb-6 animate-fadeIn">
-          Work Timeline
-        </h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6 animate-fadeIn">
+          <div>
+            <h1 className="text-2xl font-semibold text-ink-primary">
+              Work Timeline
+            </h1>
+            <p className="text-xs text-ink-secondary mt-0.5">
+              Chronological cross-platform activity unified from GitHub, Slack, Jira, and documentation.
+            </p>
+          </div>
+          <span className="text-xs font-mono text-ink-tertiary">
+            {artifacts.length} visible events
+          </span>
+        </div>
+
+        {/* Access Restriction Notice */}
+        {withheldNotice && (
+          <div className="mb-6 p-3 rounded-input bg-surface-elevated border border-edge-strong flex items-center justify-between text-xs animate-fadeIn">
+            <span className="font-medium text-ink-primary">
+              {withheldNotice}
+            </span>
+            <span className="text-ink-tertiary">
+              Role: <strong className="uppercase font-mono">{role.replace("_", " ")}</strong>
+            </span>
+          </div>
+        )}
 
         {/* Filter pills */}
         <div
@@ -353,24 +245,50 @@ export default function WorkTimeline() {
           aria-label="Filter by source"
         >
           {FILTER_OPTIONS.map((option) => (
-            <FilterPill
+            <button
               key={option}
-              label={option}
-              active={activeFilter === option}
+              type="button"
               onClick={() => setActiveFilter(option)}
-            />
+              className={`px-3.5 py-1 text-xs font-medium rounded-pill transition-all duration-200 focus:outline-none ${
+                activeFilter === option
+                  ? "bg-ink-primary text-white shadow-card"
+                  : "bg-surface-elevated text-ink-secondary border border-edge-default hover:border-ink-tertiary"
+              }`}
+            >
+              {option}
+            </button>
           ))}
         </div>
 
         {/* Content */}
-        {loading && <LoadingSkeleton />}
+        {loading && (
+          <div className="space-y-4 pl-6 animate-pulse">
+            <div className="h-24 bg-surface-elevated rounded-card" />
+            <div className="h-24 bg-surface-elevated rounded-card" />
+            <div className="h-24 bg-surface-elevated rounded-card" />
+          </div>
+        )}
 
         {!loading && error && (
-          <ErrorBanner message={error} onRetry={fetchArtifacts} />
+          <div className="p-8 text-center bg-surface-card rounded-card border border-edge-strong">
+            <p className="text-sm text-ink-primary font-medium mb-1">Error</p>
+            <p className="text-xs text-ink-tertiary mb-4">{error}</p>
+            <button
+              type="button"
+              onClick={fetchArtifacts}
+              className="px-4 py-2 text-xs font-medium rounded-btn bg-ink-primary text-white"
+            >
+              Retry
+            </button>
+          </div>
         )}
 
         {!loading && !error && filtered.length === 0 && (
-          <EmptyState filter={activeFilter} />
+          <div className="py-16 text-center bg-surface-card rounded-card border border-edge-default">
+            <p className="text-sm text-ink-tertiary">
+              No artifacts found for source "{activeFilter}".
+            </p>
+          </div>
         )}
 
         {!loading && !error && filtered.length > 0 && (
@@ -382,12 +300,13 @@ export default function WorkTimeline() {
             />
 
             {/* Cards */}
-            <div className="space-y-6">
+            <div className="space-y-5">
               {filtered.map((artifact, index) => (
                 <TimelineCard
                   key={artifact.id}
                   artifact={artifact}
                   index={index}
+                  onInspect={handleInspect}
                 />
               ))}
             </div>

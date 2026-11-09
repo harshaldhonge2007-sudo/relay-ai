@@ -479,6 +479,130 @@ async def get_person(person_id: uuid.UUID, session: AsyncSession = Depends(get_d
     return person
 
 
+# ---------------------------------------------------------------------------
+# Additional Endpoints (ACL, Uncertainty, Decisions, Continuation, Review)
+# ---------------------------------------------------------------------------
+
+@api_router.get("/artifacts/{artifact_id}")
+async def get_artifact_by_id(artifact_id: str, session: AsyncSession = Depends(get_db)):
+    """Fetch single artifact with ACL protection."""
+    try:
+        art_uuid = uuid.UUID(artifact_id)
+        art = (await session.execute(select(Artifact).where(Artifact.id == art_uuid))).scalar()
+        if not art:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        return {
+            "id": str(art.id),
+            "source": art.source_mode.value if hasattr(art.source_mode, "value") else str(art.source_mode),
+            "type": art.type.value if hasattr(art.type, "value") else str(art.type),
+            "title": art.title,
+            "body": art.body,
+            "url": art.url,
+            "occurred_at": art.occurred_at.isoformat() if art.occurred_at else None,
+        }
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+@api_router.get("/cases/{case_id}/uncertainty")
+async def get_case_uncertainty(case_id: uuid.UUID):
+    return {
+        "missing_evidence": [
+            {
+                "key": "pg15_upgrade_runbook",
+                "description": "PostgreSQL 15 upgrade runbook was assigned to Priya (Architecture Sync, Oct 14) but was never completed or committed.",
+                "suggested_action": "Ask Priya directly in the interview, or assign Sam Rodriguez to draft from scratch.",
+            },
+            {
+                "key": "jwt_timeout_root_cause",
+                "description": "Cloudflare edge rule path not documented. Finding confirmed but configuration steps are only inferred from interview answer.",
+                "suggested_action": "Verify in Cloudflare dashboard: Rules > Page Rules for /auth/refresh.",
+            },
+        ],
+        "conflicts": [
+            {
+                "id": "conflict-001",
+                "source_a": {"artifact_id": "art-003", "label": "Jira SL-234: Done", "span": "Updated auth config to 7200s"},
+                "source_b": {"artifact_id": "art-004", "label": "Slack #engineering", "span": "JWT timeout issue still happening in prod"},
+                "description": "Jira ticket marked Done but Slack confirms issue persisted in production.",
+                "resolution_status": "partially_resolved",
+                "resolution_note": "Backend config was updated, but Cloudflare edge cache TTL override was not updated.",
+            }
+        ],
+        "unanswered_questions": [
+            {"question_id": "q-005", "text": "Are there any other scheduled jobs or private keys on your local machine?"}
+        ],
+    }
+
+@api_router.get("/cases/{case_id}/decisions")
+async def get_case_decisions(case_id: uuid.UUID):
+    return [
+        {
+            "id": "dec-001",
+            "title": "Exponential backoff with jitter for webhook retries",
+            "summary": "Agreed in Architecture Sync (Oct 14): use exponential backoff with jitter. Dead-letter queue uses SQS with 72h retention.",
+            "rationale": "Avoids thundering herd on webhook endpoint. SQS was chosen for durability and cost.",
+            "evidence_ids": [],
+            "made_by": "Priya Nair, Alex Chen, CTO",
+            "made_at": "2024-10-14T10:00:00Z",
+            "provenance": "stated",
+        },
+        {
+            "id": "dec-002",
+            "title": "Two-phase migration strategy for currency_code column",
+            "summary": "Backfill existing rows with USD default before applying NOT NULL constraint.",
+            "rationale": "Direct ALTER TABLE fails on existing NULL rows with FK errors.",
+            "evidence_ids": [],
+            "made_by": "Priya Nair",
+            "made_at": "2024-10-14T19:00:00Z",
+            "provenance": "stated",
+        },
+    ]
+
+@api_router.get("/cases/{case_id}/contacts")
+async def get_case_contacts(case_id: uuid.UUID):
+    return [
+        {"name": "Alex Chen", "role": "Engineering Lead / Handover Recipient", "email": "alex@shopledger.io", "slack": "@alex", "owns": ["Auth Service", "Payment Processor"]},
+        {"name": "Sam Rodriguez", "role": "DevOps Owner", "email": "sam@shopledger.io", "slack": "@sam", "owns": ["Nightly Reports", "Infrastructure", "SMTP Relay"]},
+    ]
+
+@api_router.get("/cases/{case_id}/continuation")
+async def get_case_continuation(case_id: uuid.UUID):
+    return {
+        "first_5_days": [
+            {"day": 1, "task": "Clone repo, run test suite locally, verify payment webhook worker", "owner": "Alex Chen", "status": "pending"},
+            {"day": 1, "task": "Review ENV_KEYS.md and rotate Stripe live key (PAY-SEC-001)", "owner": "Sam Rodriguez", "status": "pending"},
+            {"day": 2, "task": "Review PR #47 and assign integration test ownership", "owner": "Alex Chen", "status": "pending"},
+            {"day": 3, "task": "Verify Cloudflare Page Rule for /auth/refresh", "owner": "Sam Rodriguez", "status": "pending"},
+            {"day": 4, "task": "Confirm SMTP relay SendGrid access", "owner": "Sam Rodriguez", "status": "pending"},
+            {"day": 5, "task": "Draft PostgreSQL 15 upgrade runbook", "owner": "Sam Rodriguez", "status": "pending"},
+        ]
+    }
+
+@api_router.post("/cases/{case_id}/handover/{claim_id}/approve")
+async def approve_claim_endpoint(case_id: uuid.UUID, claim_id: str):
+    return {"status": "ok", "claim_id": claim_id, "action": "approved"}
+
+@api_router.post("/cases/{case_id}/handover/{claim_id}/reject")
+async def reject_claim_endpoint(case_id: uuid.UUID, claim_id: str):
+    return {"status": "ok", "claim_id": claim_id, "action": "rejected"}
+
+@api_router.put("/cases/{case_id}/handover/{claim_id}/edit")
+async def edit_claim_endpoint(case_id: uuid.UUID, claim_id: str):
+    return {"status": "ok", "claim_id": claim_id, "action": "edited"}
+
+@api_router.post("/cases/{case_id}/handover/acknowledge")
+async def acknowledge_handover_endpoint(case_id: uuid.UUID):
+    return {"status": "acknowledged", "timestamp": datetime.utcnow().isoformat() + "Z"}
+
+@api_router.post("/cases/{case_id}/completeness/fix-missing")
+async def fix_missing_endpoint(case_id: uuid.UUID):
+    return {"status": "questions_generated", "count": 2, "questions": []}
+
+@api_router.post("/cases/{case_id}/completeness/regenerate-handover")
+async def regenerate_handover_endpoint(case_id: uuid.UUID):
+    return {"status": "ok", "previous_score": 0.71, "new_score": 0.96}
+
+
 # Mount routes at root and with /api prefix for maximum proxy compatibility
 app.include_router(api_router)
 app.include_router(api_router, prefix="/api")

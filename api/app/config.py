@@ -1,4 +1,10 @@
-from pydantic_settings import BaseSettings
+try:
+    from pydantic_settings import BaseSettings
+except ImportError:
+    try:
+        from pydantic import BaseSettings  # pydantic v1 fallback
+    except ImportError:
+        from pydantic import BaseModel as BaseSettings
 from functools import lru_cache
 from typing import Optional
 
