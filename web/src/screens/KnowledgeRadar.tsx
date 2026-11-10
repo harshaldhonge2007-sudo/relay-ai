@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { API_PREFIX } from "../apiConfig";
+import { apiFetch } from "../api";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -49,10 +49,11 @@ interface ComponentCard {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const API_BASE = API_PREFIX;
+const API_BASE = "";
 
 async function fetchJSON<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const path = url.replace(/^.*?\/api/, "").replace(/^\/?api/, "");
+  const res = await apiFetch(path.startsWith("/") ? path : `/${path}`);
   if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
   return res.json();
 }

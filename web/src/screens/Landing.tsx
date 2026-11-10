@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { setApiRole, API_PREFIX } from "../api";
+import { setApiRole, apiFetch, API_PREFIX } from "../api";
 
 import Header from "../components/landing/Header";
 import Hero from "../components/landing/Hero";
@@ -33,8 +33,20 @@ export default function Landing() {
       setSeeding(true);
       try {
         await setApiRole("engineering_lead");
-        const res = await fetch(`${API_PREFIX}/cases`);
-        const data = await res.json();
+        let data: any = [];
+        try {
+          const res = await fetch(`${API_PREFIX}/cases`);
+          const ct = res.headers.get("content-type") || "";
+          if (res.ok && ct.includes("application/json")) {
+            data = await res.json();
+          } else {
+            const fallback = await apiFetch("/cases");
+            data = await fallback.json();
+          }
+        } catch {
+          const fallback = await apiFetch("/cases");
+          data = await fallback.json();
+        }
         const cases = Array.isArray(data) ? data : [];
         const demo =
           cases.find((c: any) => /shopledger|priya/i.test(c.name)) ??

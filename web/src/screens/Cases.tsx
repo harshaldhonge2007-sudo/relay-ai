@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, type FormEvent, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_PREFIX } from "../apiConfig";
+import { apiFetch } from "../api";
 
 interface Case {
   id: string;
@@ -52,7 +52,7 @@ export default function Cases() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_PREFIX}/cases`);
+      const res = await apiFetch(`/cases`);
       if (!res.ok) throw new Error(`Failed to fetch cases (${res.status})`);
       const data = await res.json();
       setCases(Array.isArray(data) ? data : []);
@@ -70,7 +70,7 @@ export default function Cases() {
   const handleSeedDemo = async () => {
     setSeeding(true);
     try {
-      const res = await fetch(`${API_PREFIX}/demo/seed`, { method: "POST" });
+      const res = await apiFetch(`/demo/seed`, { method: "POST" });
       if (!res.ok) throw new Error(`Seed failed (${res.status})`);
       await fetchCases();
     } catch (err: unknown) {
@@ -89,7 +89,7 @@ export default function Cases() {
     setCreating(true);
     setCreateError(null);
     try {
-      const res = await fetch(`${API_PREFIX}/cases`, {
+      const res = await apiFetch(`/cases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim(), repo_url: newRepoUrl.trim() }),
