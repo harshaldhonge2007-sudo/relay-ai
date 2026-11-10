@@ -9,7 +9,10 @@
 @layer base {
   html,
   body {
-    @apply bg-surface-base text-ink-primary font-sans overflow-x-hidden;
+    @apply bg-surface-base text-ink-primary font-sans;
+    /* overflow-x:clip clips overflow without creating a new scroll container,
+       so position:sticky in descendant elements works correctly in all browsers. */
+    overflow-x: clip;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -45,6 +48,36 @@
    Utility Classes
    ---------------------------------------- */
 @layer utilities {
+  /* Provenance Grid Vignette: soft radial mask fading grid dots toward viewport edges */
+  .mask-grid-vignette {
+    mask-image: radial-gradient(ellipse at 50% 50%, black 50%, rgba(0, 0, 0, 0.7) 75%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 50%, rgba(0, 0, 0, 0.7) 75%, transparent 100%);
+    mask-size: 100% 100%;
+    -webkit-mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+  }
+
+  /* Provenance Grid App Shell Mask: softly reveals grid in content area while fading behind 260px sidebar and 57px top bar */
+  .mask-grid-app-shell {
+    mask-image: radial-gradient(ellipse at 65% 55%, black 30%, rgba(0, 0, 0, 0.3) 70%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse at 65% 55%, black 30%, rgba(0, 0, 0, 0.3) 70%, transparent 100%);
+    mask-size: 100% 100%;
+    -webkit-mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    -webkit-mask-repeat: no-repeat;
+  }
+
+  /* Elevated Surfaces & Floating Tiles — sit strictly above the background lattice */
+  .rounded-card,
+  .bg-surface-card,
+  .bg-surface-elevated,
+  .shadow-card,
+  .glass-panel {
+    position: relative;
+    z-index: 10;
+  }
+
   /* Glass panel — frosted translucent card */
   .glass-panel {
     @apply bg-white/80 backdrop-blur-sm border border-edge-default;

@@ -109,7 +109,7 @@ To uphold strict evaluation integrity, all system capabilities are categorized h
 | Capability | Status | Implementation Details |
 | :--- | :---: | :--- |
 | **Role-Based Access Control (ACL)** | Real | Server-side enforcement deriving role strictly from HMAC-SHA256 signed bearer tokens; 404 status codes on restricted direct access to prevent existence leakage. |
-| **Review Workflow & Release Gating** | Real | Immutable numbered version history snapshot on every edit/approval/rejection; release gated until 100% of claims are reviewed; rejected claims permanently omitted from release; side-by-side diff between any versions. |
+| **Review Workflow & Release Gating** | Real | Append-only numbered version history snapshot on every edit/approval/rejection; release gated until 100% of claims are reviewed; rejected claims permanently omitted from release; side-by-side diff between any versions. Version history is session-persisted in demo server; PostgreSQL-backed in full-stack mode. |
 | **Deterministic Grounding Verifier** | Real | Offline deterministic lexical and entity overlap verification (numbers, tickets, code paths, proper nouns). Unsupported sentences downgraded to INFERRED/UNKNOWN and flagged with diagnostic reasons. |
 | **Role-Aware Completeness Simulation** | Real | Dynamic score formula computed from required fact checklist: found fact weight / total weight. Simulation strictly scoped to active role ACL (contractor gets 36%, lead/successor get 71%). |
 | **Closed-Loop Fix Loop** | Real | Targeted question generation for missing facts. Pre-filled answers labeled as "demo-suggested answers" requiring lead checkbox confirmation before re-scoring to 96%. |
@@ -122,11 +122,13 @@ To uphold strict evaluation integrity, all system capabilities are categorized h
 
 ## Known Limitations
 
-1. **Demo Authentication vs. Production Auth**: The demo authentication system uses HMAC-SHA256 signed bearer tokens with a fixed demo secret (`relay-demo-only-not-production`) to facilitate local offline evaluation. It is not an enterprise OAuth2, SAML, or OIDC provider.
+1. **Demo Authentication (not production auth)**: The demo authentication system uses HMAC-SHA256 signed bearer tokens. The signing secret is loaded from `RELAY_TOKEN_SECRET` env-var; if unset, a random per-process secret is generated (tokens do not survive a restart). This is demo authentication — not an OAuth2, SAML, or OIDC provider. Set `RELAY_TOKEN_SECRET` before deployment.
 2. **Synthetic Fixtures**: Slack, Jira, and meeting notes are seeded from local JSON/Markdown fixtures in `seed/` to guarantee deterministic, offline execution for hackathon evaluation. Production deployment requires registering live Slack/Jira app credentials with OAuth scopes.
 3. **Pattern-Based Secrets Redaction**: Credential masking is regex pattern-based (matching known formats like `sk_live_...`, `AKIA...`, `SG....`, connection strings, and JWT signatures). Custom or novel token formats without standard prefixes may not be caught by static patterns.
-4. **Deterministic Lexical Verifier**: Offline grounding verification relies on exact and normalized entity and lexical overlap. It does not run high-latency GPU embeddings or hosted LLM entailment models in offline mode.
-5. **Database Scope in Offline Demo**: The offline demo server runs in-memory (`mock_server.py`) for instantaneous setup; the full-stack path (`api/app/`) runs PostgreSQL 16 with asyncpg and pgvector.
+4. **Deterministic Lexical Verifier**: Offline grounding verification checks lexical token containment and exact domain entity recall. It does not evaluate semantic meaning — it cannot detect a factually incorrect paraphrase that re-uses the same domain entities.
+5. **Append-Only Session History (demo server)**: The in-memory demo server retains version history for the life of the process. History is not persisted across restarts.
+6. **Two Distinct Risk Scores**: The system computes two separate scores with different formulas — see the "What is Real vs. Simulated" table below.
+7. **Simulation Scope**: The onboarding simulation checks whether required facts are present in the handover document (tested for the demo scope). It does not execute commands or build the repository.
 
 ---
 

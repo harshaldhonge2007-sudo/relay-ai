@@ -1,16 +1,48 @@
 """
 Shared HMAC-SHA256 auth utilities for RELAY AI.
 demo authentication — not for production.
+
+Token secret priority:
+  1. RELAY_TOKEN_SECRET environment variable
+  2. Auto-generated random secret per process (tokens do not survive restarts)
+
+A hardcoded fallback is intentionally absent so that accidental deployments
+without the env-var do not issue tokens signed with a known public key.
 """
 import base64
 import hashlib
 import hmac
 import json
+import logging
+import os
+import secrets
 import time
 from typing import Optional
 
-# demo authentication — not for production
-RELAY_DEMO_SECRET = "relay-demo-only-not-production"
+logger = logging.getLogger(__name__)
+
+
+def _load_secret() -> str:
+    """
+    Read the signing secret from RELAY_TOKEN_SECRET.
+    If unset, generate a random per-process secret and warn.
+    demo authentication — not for production.
+    """
+    env_secret = os.environ.get("RELAY_TOKEN_SECRET", "").strip()
+    if env_secret:
+        return env_secret
+    generated = secrets.token_hex(32)
+    logger.warning(
+        "RELAY_TOKEN_SECRET is not set. Using a random per-process secret. "
+        "Tokens will not survive a server restart. "
+        "Set RELAY_TOKEN_SECRET in the environment for stable demo sessions. "
+        "demo authentication — not for production."
+    )
+    return generated
+
+
+# Resolved once at import time for the life of the process.
+_RELAY_SECRET: str = _load_secret()
 
 DEMO_USERS = {
     "lead": {
@@ -37,9 +69,10 @@ ROLE_HIERARCHY = {
 TOKEN_TTL_SECONDS = 86400
 
 
-def _make_hmac(payload_b64: str, secret: str = RELAY_DEMO_SECRET) -> str:
+def _make_hmac(payload_b64: str) -> str:
+    """HMAC-SHA256 of base64 payload using the per-process signing secret."""
     return hmac.new(
-        secret.encode(),
+        _RELAY_SECRET.encode(),
         payload_b64.encode(),
         hashlib.sha256,
     ).hexdigest()
@@ -70,6 +103,8 @@ def sign_demo_token(user: str) -> Optional[dict]:
 def verify_demo_token(token: str) -> Optional[str]:
     """
     Verify a demo token and return the role if valid, else None.
+    Returns None for expired, malformed, or tokens with invalid signatures.
+    Uses hmac.compare_digest to prevent timing attacks.
     demo authentication — not for production.
     """
     try:

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <rect width="1200" height="630" fill="#111111"/>
+  <!-- Grain texture -->
+  <filter id="grain">
+    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+    <feBlend in="SourceGraphic" mode="overlay"/>
+  </filter>
+  <rect width="1200" height="630" filter="url(#grain)" opacity="0.04"/>
+  <!-- Wordmark -->
+  <text
+    x="80"
+    y="300"
+    font-family="ui-sans-serif, system-ui, -apple-system, sans-serif"
+    font-weight="800"
+    font-size="160"
+    fill="#FFFFFF"
+    letter-spacing="-8"
+  >RELAY</text>
+  <!-- Tagline -->
+  <text
+    x="80"
+    y="380"
+    font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+    font-weight="700"
+    font-size="22"
+    fill="#888888"
+    letter-spacing="4"
+  >EVIDENCE-LINKED HANDOVER</text>
+  <!-- Domain -->
+  <text
+    x="80"
+    y="560"
+    font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+    font-weight="400"
+    font-size="18"
+    fill="#555555"
+    letter-spacing="2"
+  >Synthetic demo data · Demo authentication</text>
+</svg>
+

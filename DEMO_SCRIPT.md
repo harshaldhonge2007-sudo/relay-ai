@@ -52,7 +52,7 @@
 - **Narration**:
   > "Finally, the synthesized handover document. Notice three things:
   > First, **provenance badges** on every claim: VERIFIED, STATED, or INFERRED. Clicking any badge opens the underlying source in the evidence drawer.
-  > Second, **human-in-the-loop governance**: As Engineering Lead, I can approve, reject with a mandatory reason, or edit any claim inline. All changes are tracked in an immutable audit history.
+  > Second, **human-in-the-loop governance**: As Engineering Lead, I can approve, reject with a mandatory reason, or edit any claim inline. All changes are tracked in an append-only version history (session-persisted in demo mode).
   > Third, once released, the incoming engineer reviews the document and formally submits a cryptographically timestamped **Receipt Acknowledgement**.
   > RELAY AI turns chaotic offboarding into a traceable, actionable, permission-aware transition."
 - **Action**: Click `Approve` on Claim 1. Click `Reject` on Claim 2 and type a reason. Click `Release to Successor`. Switch role to `Successor` and click `Acknowledge Receipt`.

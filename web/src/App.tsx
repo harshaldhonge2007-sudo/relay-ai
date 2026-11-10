@@ -5,11 +5,13 @@ import {
   Route,
   Link,
   useLocation,
-  Navigate,
+  Outlet,
 } from "react-router-dom";
 import { CaseProvider, useCaseLoader, useRole, RelayRole } from "./contexts/CaseContext";
 import { EvidenceDrawerProvider } from "./components/EvidenceDrawer";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import Landing from "./screens/Landing";
+import NotFound from "./screens/NotFound";
 
 import Cases from "./screens/Cases";
 import KnowledgeRadar from "./screens/KnowledgeRadar";
@@ -105,7 +107,7 @@ function Sidebar({ open, onClose }: SidebarProps) {
     [caseId, location.pathname]
   );
 
-  const isCasesActive = location.pathname === "/";
+  const isCasesActive = location.pathname === "/cases";
 
   const caseName = loading
     ? "Loading..."
@@ -136,7 +138,7 @@ function Sidebar({ open, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto py-4">
           <div className="px-3 mb-1">
             <Link
-              to="/"
+              to="/cases"
               onClick={onClose}
               className={`
                 flex items-center px-3 py-2 rounded-btn text-xs font-medium transition-all duration-200
@@ -283,9 +285,26 @@ function AppShell() {
       {/* ---- Main content ---- */}
       <main className="pt-[57px] lg:pl-[260px] min-h-screen">
         <div className="p-6 lg:p-8 animate-fadeIn">
-          <ErrorBoundary>
-            <Routes>
-              <Route path="/" element={<Cases />} />
+          <ErrorBoundary><Outlet /></ErrorBoundary>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  App root — providers + router                                     */
+/* ------------------------------------------------------------------ */
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <CaseProvider>
+        <EvidenceDrawerProvider>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/cases" element={<Cases />} />
+            <Route element={<AppShell />}>
               <Route path="/case/:caseId/knowledge" element={<KnowledgeRadar />} />
               <Route path="/case/:caseId/timeline" element={<WorkTimeline />} />
               <Route path="/case/:caseId/findings" element={<Findings />} />
@@ -295,26 +314,8 @@ function AppShell() {
               <Route path="/case/:caseId/uncertainty" element={<Uncertainty />} />
               <Route path="/case/:caseId/decisions" element={<DecisionLog />} />
               <Route path="/case/:caseId/admin" element={<Admin />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </ErrorBoundary>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  App root — providers + router                                      */
-/* ------------------------------------------------------------------ */
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <CaseProvider>
-        <EvidenceDrawerProvider>
-          <Routes>
-            <Route path="/*" element={<AppShell />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </EvidenceDrawerProvider>
       </CaseProvider>

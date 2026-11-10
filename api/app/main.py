@@ -427,10 +427,13 @@ async def get_completeness(
     ]
 
     role_facts = []
+    withheld_count = 0
     for f in base_facts:
         f_copy = dict(f)
         if role == "contractor" and f.get("visibility") != "public":
+            withheld_count += 1
             f_copy["status"] = "withheld"
+            f_copy["key"] = "Item requires higher access"
             f_copy["source"] = "Withheld: requires internal access"
         role_facts.append(f_copy)
 
@@ -441,10 +444,8 @@ async def get_completeness(
 
     blockers = []
     if role == "contractor":
-        blockers = [
-            "Internal credentials (REPORT_BUCKET_NAME, SMTP_RELAY_HOST) withheld under contractor role ACL.",
-            "Database migration backfill instructions withheld under contractor role ACL.",
-        ]
+        if withheld_count > 0:
+            blockers = [f"{withheld_count} items require higher access"]
     else:
         blockers = [
             "PostgreSQL 15 upgrade runbook (SL-412) is missing from repository documentation.",
@@ -459,12 +460,13 @@ async def get_completeness(
         "runs": [round(max(0.1, score - 0.03), 2), score, round(min(1.0, score + 0.02), 2)],
         "required_facts": role_facts,
         "blockers": blockers,
+        "grounding_score": 0.88,
         "role": role,
-        "formula": "weighted sum of found facts / total required facts",
+        "score_name": "Handover Readiness Score",
+        "formula": "Handover Readiness Score = weighted_sum(found_facts) / total_weight",
         "formula_calc": f"{found_weight:.2f} / {total_weight:.2f} = {int(round(score * 100))}%",
-        "unweighted_calc": f"{len(found_facts)} of {len(role_facts)} required facts found",
         "is_simulated": True,
-        "simulated_label": "Simulated developer onboarding agent (offline)",
+        "simulated_label": "Simulated developer onboarding agent (offline, deterministic)",
     }
 
 

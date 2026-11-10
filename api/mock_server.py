@@ -10,11 +10,16 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
+import os
+import secrets as _secrets_mod
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from app.handover.verifier import GroundingVerifier
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RELAY AI Backend (Autonomous Demo Server)")
 
@@ -35,9 +40,27 @@ SAM_ID = "person-003"
 
 # ---------------------------------------------------------------------------
 # demo authentication — not for production
+#
+# Token secret priority:
+#   1. RELAY_TOKEN_SECRET environment variable
+#   2. Auto-generated random secret per process (tokens do not survive restarts)
 # ---------------------------------------------------------------------------
 
-RELAY_DEMO_SECRET = "relay-demo-only-not-production"
+def _load_mock_secret() -> str:
+    env_secret = os.environ.get("RELAY_TOKEN_SECRET", "").strip()
+    if env_secret:
+        return env_secret
+    generated = _secrets_mod.token_hex(32)
+    logger.warning(
+        "RELAY_TOKEN_SECRET is not set. Using a random per-process secret. "
+        "Tokens will not survive a server restart. "
+        "Set RELAY_TOKEN_SECRET in the environment for stable demo sessions. "
+        "demo authentication — not for production."
+    )
+    return generated
+
+_RELAY_SECRET: str = _load_mock_secret()
+
 TOKEN_TTL_SECONDS = 86400  # 24 hours
 
 DEMO_USERS = {
@@ -67,9 +90,9 @@ ROLE_HIERARCHY: Dict[str, List[str]] = {
 
 
 def _make_hmac(payload_b64: str) -> str:
-    """HMAC-SHA256 of base64 payload. demo authentication — not for production."""
+    """HMAC-SHA256 of base64 payload using the per-process signing secret."""
     return hmac.new(
-        RELAY_DEMO_SECRET.encode(),
+        _RELAY_SECRET.encode(),
         payload_b64.encode(),
         hashlib.sha256,
     ).hexdigest()
@@ -969,7 +992,42 @@ async def get_components(case_id: str):
 
 @router.get("/cases/{case_id}/knowledge")
 async def get_knowledge(case_id: str):
-    return db["knowledge_scores"]
+    """
+    Return knowledge concentration scores per person per component.
+    Each score represents a leaver's time-decayed authorship share.
+
+    Knowledge Concentration Risk formula (computed in api/app/risk/score.py):
+      Risk = Criticality × L × (1 − B) × (1 − 0.6 × D)
+    where:
+      L = leaver authorship share (time-decayed edits + reviews + discussion)
+      B = bench strength (highest other-contributor score / leaver score)
+      D = documentation coverage ratio (0–1)
+    This endpoint returns the raw L scores; risk values are derived from them.
+    """
+    # Annotate each score with its derived risk value for UI display.
+    components = {c["id"]: c for c in db["components"]}
+    result = []
+    for ks in db["knowledge_scores"]:
+        entry = dict(ks)
+        comp = components.get(ks["component_id"], {})
+        criticality = comp.get("criticality", 0.5)
+        L = ks["score"]
+        # Bench strength: best other-contributor score / leaver score
+        others = [
+            o["score"] for o in db["knowledge_scores"]
+            if o["component_id"] == ks["component_id"] and o["person_id"] != ks["person_id"]
+        ]
+        B = (max(others) / L) if others and L > 0 else 0.0
+        B = min(B, 1.0)
+        D = 0.6  # demo: moderate doc coverage
+        risk = round(criticality * L * (1 - B) * (1 - 0.6 * D), 3)
+        entry["risk"] = risk
+        entry["risk_formula"] = (
+            f"Knowledge Concentration Risk = {criticality:.2f} × {L:.2f} × (1 − {B:.2f}) × (1 − 0.6 × {D:.2f}) = {risk:.3f}"
+        )
+        entry["risk_score_name"] = "Knowledge Concentration Risk"
+        result.append(entry)
+    return result
 
 @router.get("/cases/{case_id}/artifacts")
 async def get_artifacts(case_id: str, request: Request):
@@ -1462,14 +1520,22 @@ def _compute_role_completeness(role: str) -> dict:
     """
     Role-aware simulation: The blind onboarding agent can only read content
     the active role has permission to access.
-    Score formula: weighted sum of found facts / total required facts. Computed, never hardcoded.
+    Score formula (Handover Readiness Score):
+      weighted_sum(found_facts) / total_weight
+    Computed dynamically from the fact checklist — never hardcoded.
     """
     base_facts = db["completeness"]["required_facts"]
+    withheld_count = 0
     role_facts = []
     for f in base_facts:
         f_copy = dict(f)
         if role == "contractor" and f.get("visibility") != "public":
+            # Mask all identifying information from withheld items.
+            # A contractor must not learn the name, source, or weight of
+            # restricted facts — only that some items require higher access.
+            withheld_count += 1
             f_copy["status"] = "withheld"
+            f_copy["key"] = "Item requires higher access"
             f_copy["source"] = "Withheld: requires internal access"
         role_facts.append(f_copy)
 
@@ -1478,18 +1544,26 @@ def _compute_role_completeness(role: str) -> dict:
     found_weight = round(sum(f.get("weight", 0.0) for f in found_facts), 2)
     score = round(found_weight / total_weight, 2)
 
+    # Blockers: contractor sees only an opaque count, never specific names.
     blockers = []
     if role == "contractor":
-        blockers = [
-            "Internal credentials (REPORT_BUCKET_NAME, SMTP_RELAY_HOST) withheld under contractor role ACL.",
-            "Database migration backfill instructions withheld under contractor role ACL.",
-        ]
+        if withheld_count > 0:
+            blockers = [
+                f"{withheld_count} items require higher access"
+            ]
     else:
         missing = [f for f in role_facts if f["status"] == "missing"]
         if any(f["key"] == "pg15_upgrade_runbook" for f in missing):
             blockers.append("PostgreSQL 15 upgrade runbook (SL-412) is missing from repository documentation.")
         if any(f["key"] == "jwt_timeout_root_cause" for f in missing):
             blockers.append("JWT timeout root cause (Cloudflare gateway) is not explicitly documented in handover.")
+
+    # Add an opaque notice so the contractor knows some items were hidden.
+    withheld_notice = (
+        f"{withheld_count} required facts require higher access and are not shown."
+        if withheld_count > 0 and role == "contractor"
+        else None
+    )
 
     db["completeness"]["score"] = score
     db["completeness"]["mean"] = round(score - 0.02, 2) if score > 0.05 else score
@@ -1504,14 +1578,17 @@ def _compute_role_completeness(role: str) -> dict:
         "runs": [round(max(0.1, score - 0.03), 2), score, round(min(1.0, score + 0.02), 2)],
         "phase": db["completeness"]["phase"],
         "required_facts": role_facts,
+        "withheld_facts_count": withheld_count,
+        "withheld_notice": withheld_notice,
         "blockers": blockers,
         "grounding_score": db["completeness"].get("grounding_score", 0.88),
         "role": role,
-        "formula": "weighted sum of found facts / total required facts",
+        "score_name": "Handover Readiness Score",
+        "formula": "Handover Readiness Score = weighted_sum(found_facts) / total_weight",
         "formula_calc": f"{found_weight:.2f} / {total_weight:.2f} = {int(round(score * 100))}%",
-        "unweighted_calc": f"{len(found_facts)} of {len(role_facts)} required facts found",
+        "unweighted_calc": f"{len(found_facts)} of {len(role_facts)} accessible required facts found",
         "is_simulated": True,
-        "simulated_label": "Simulated developer onboarding agent (offline)",
+        "simulated_label": "Simulated developer onboarding agent (offline, deterministic)",
     }
 
 @router.get("/cases/{case_id}/completeness")
@@ -1526,7 +1603,11 @@ async def run_completeness(case_id: str, request: Request):
 
 @router.post("/cases/{case_id}/completeness/fix-missing")
 async def fix_missing_facts(case_id: str, request: Request):
-    """Closed-loop: generate follow-up questions with demo-suggested answers requiring lead confirmation."""
+    """Closed-loop: generate follow-up questions with demo-suggested answers requiring lead confirmation.
+    Only engineering_lead and successor may trigger this action."""
+    role = _get_role(request)
+    if role == "contractor":
+        raise HTTPException(status_code=403, detail="Only engineering_lead or successor can trigger the fix loop.")
     missing = [f for f in db["completeness"]["required_facts"] if f["status"] == "missing"]
     if not missing:
         return {"status": "nothing_to_fix", "questions": []}
@@ -1687,8 +1768,45 @@ async def get_redactions(case_id: str, request: Request):
     return db["admin"]["redactions"]
 
 @router.get("/cases/{case_id}/uncertainty")
-async def get_uncertainty(case_id: str):
-    return db["uncertainty"]
+async def get_uncertainty(case_id: str, request: Request):
+    """
+    Return uncertainty data filtered by role.
+    - engineering_lead / successor: full detail including source artifact IDs and descriptions.
+    - contractor: opaque summary only — no artifact IDs, no restricted source names.
+    Unauthenticated callers are treated as successor (default role).
+    """
+    role = _get_role(request)
+    uncertainty = db["uncertainty"]
+
+    if role == "contractor":
+        # Contractor sees only public conflicts; restricted details replaced.
+        # missing_evidence items reference internal documents — omit entirely.
+        # unanswered_questions may reference local credentials — omit entirely.
+        public_conflicts = []
+        for c in uncertainty.get("conflicts", []):
+            # Only expose conflicts whose source artifacts are public.
+            src_a_art = next((a for a in db["artifacts"] if a["id"] == c["source_a"].get("artifact_id")), None)
+            src_b_art = next((a for a in db["artifacts"] if a["id"] == c["source_b"].get("artifact_id")), None)
+            a_public = src_a_art is None or src_a_art.get("acl", {}).get("visibility") == "public"
+            b_public = src_b_art is None or src_b_art.get("acl", {}).get("visibility") == "public"
+            if a_public and b_public:
+                public_conflicts.append(c)
+
+        withheld_evidence = len(uncertainty.get("missing_evidence", []))
+        withheld_questions = len(uncertainty.get("unanswered_questions", []))
+        return {
+            "missing_evidence": [],
+            "withheld_missing_evidence_count": withheld_evidence,
+            "conflicts": public_conflicts,
+            "unanswered_questions": [],
+            "withheld_questions_count": withheld_questions,
+            "notice": (
+                f"{withheld_evidence} evidence gaps and {withheld_questions} open questions "
+                "require higher access and are not shown."
+            ) if withheld_evidence or withheld_questions else None,
+        }
+
+    return uncertainty
 
 @router.get("/cases/{case_id}/decisions")
 async def get_decisions(case_id: str):

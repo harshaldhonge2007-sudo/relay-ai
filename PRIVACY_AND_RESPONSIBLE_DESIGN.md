@@ -81,20 +81,20 @@ Offboarding documentation must be dependable. Fabricated commands or invented co
 - **UNKNOWN**: Explicitly marked gaps where evidence is missing or conflicting. The system refuses to fabricate answers for missing facts.
 
 ### Deterministic Sentence-Level Grounding Verifier
-Synthesized handover items are audited by an offline deterministic verifier:
+Synthesized handover items are checked by an offline deterministic verifier:
 - Evaluates non-stopword lexical token containment and exact domain entity recall (numbers, percentages, ticket keys, environment variables, code paths, and proper nouns).
 - Unsupported sentences failing grounding thresholds are downgraded to `INFERRED` or `UNKNOWN` and flagged with diagnostic reasons.
 - Displays an aggregate document Grounding Score with the exact method stated: `deterministic lexical and entity overlap (offline)`.
 
 ---
 
-## 4. Immutable Version History & Release Gating
+## 4. Append-Only Version History & Release Gating
 
-Every state change throughout the offboarding workflow is permanently recorded:
-- **Numbered Immutable Versions**: Every edit, approval, rejection, and release increments the version and creates a permanent snapshot (author, timestamp, change summary).
+Every state change throughout the offboarding workflow is permanently recorded within a session:
+- **Numbered Append-Only Versions**: Every edit, approval, rejection, and release increments the version and creates a snapshot (author, timestamp, change summary). Version history is append-only within the in-memory store; it is not persisted across server restarts in the demo server (`mock_server.py`). The full-stack path (`api/app/`) uses a PostgreSQL-backed audit log.
 - **Release Gating**: Engineering leads cannot release a handover document until 100% of claims are approved, edited, or rejected. Unreviewed draft claims block release with HTTP 400.
 - **Exclusion of Rejected Claims**: Claims rejected by the lead are permanently purged from released snapshots.
-- **Versioned Receipt Acknowledgement**: When a successor acknowledges receipt, the acknowledgement binds immutably to the specific released version number.
+- **Versioned Receipt Acknowledgement**: When a successor acknowledges receipt, the acknowledgement binds to the specific released version number within the session.
 
 ---
 
@@ -108,10 +108,15 @@ Every state change throughout the offboarding workflow is permanently recorded:
 
 ## 6. Known Limitations
 
-1. **Demo Authentication**: Uses signed HMAC-SHA256 bearer tokens with a fixed secret for offline evaluation; not intended for production multi-tenant OAuth/SAML deployments.
-2. **Pattern-Based Redaction**: Secrets redaction relies on regular expressions. Novel or non-standard token formats without standard prefixes may not be caught.
-3. **Synthetic Seed Fixtures**: Default demo runs on realistic synthetic fixtures (`seed/`) for offline stability and judge evaluation.
-4. **Deterministic Lexical Verifier**: Offline grounding verification relies on lexical and domain entity overlap rather than deep GPU neural entailment models.
+1. **Demo Authentication (not production auth)**: Uses HMAC-SHA256 bearer tokens. The signing secret is loaded from `RELAY_TOKEN_SECRET` env-var; if unset, a random per-process secret is generated and tokens will not survive a server restart. This is demo authentication, not an OAuth2, SAML, or OIDC provider.
+2. **Pattern-Based Redaction**: Secrets redaction relies on regular expressions targeting known formats. Novel or non-standard token formats without standard prefixes may not be caught.
+3. **Synthetic Seed Fixtures**: Default demo runs on realistic synthetic fixtures (`seed/`) for offline stability and judge evaluation. Slack and Jira connectors are fixture-backed; they do not connect to live external APIs in demo mode.
+4. **Deterministic Lexical Verifier**: Offline grounding verification checks lexical token containment and exact domain entity recall. It does not evaluate semantic meaning — it cannot detect a factually incorrect paraphrase that re-uses the same domain entities.
+5. **Append-Only Session History (demo server)**: The in-memory demo server (`mock_server.py`) retains version history for the life of the process. History is not persisted across restarts. The full-stack path (`api/app/`) uses a PostgreSQL-backed audit log.
+6. **Simulation Scope**: The onboarding simulation checks whether required facts are present in the handover document. It does not execute commands, build the repository, or run a real development environment.
+7. **Two Distinct Risk Scores**: The system computes two separate scores:
+   - **Knowledge Concentration Risk** = `Criticality × L × (1 − B) × (1 − 0.6 × D)` — per-component leaver risk shown on the knowledge radar.
+   - **Handover Readiness Score** = `weighted_sum(found_facts) / total_weight` — the "71% → 96%" figure shown in the simulation.
 
 ---
 

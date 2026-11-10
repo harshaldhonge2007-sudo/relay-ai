@@ -31,3 +31,4 @@ def test_fuzzy_match_case_insensitive():
     resolver = IdentityResolver()
     assert resolver._fuzzy_match("ALEX_CHEN", "alex_chen") is True
     assert resolver._fuzzy_match("ShopLedger-Bot", "shopledger-bot") is True
+

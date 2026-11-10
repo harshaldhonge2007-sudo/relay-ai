@@ -113,7 +113,7 @@ class TestSecretNeverStored:
             occurred_at=None,
             url="",
             title="Commit with secret",
-            body="API_KEY=ghp_16CvY2LCSkWZ4qvS2j92vWEWpGxO",
+            body="API_KEY=ghp_FAKE_TOKEN_FOR_TESTING_ONLY_NOT_REAL",
             raw={},
             acl_tag="readable",
         )

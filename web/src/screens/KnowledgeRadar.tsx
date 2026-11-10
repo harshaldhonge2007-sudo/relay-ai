@@ -363,6 +363,30 @@ export default function KnowledgeRadar() {
           </div>
         )}
 
+        {/* Knowledge Concentration Risk Formula Banner */}
+        {!loading && !error && cards.length > 0 && (
+          <div className="mb-6 bg-surface-card border border-edge-default rounded-card p-4 shadow-card animate-fadeIn">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary block">
+                  Knowledge Concentration Risk Formula
+                </span>
+                <p className="text-xs font-mono font-semibold text-ink-primary mt-0.5">
+                  Risk = Criticality × L × (1 − B) × (1 − 0.6 × D)
+                </p>
+                <p className="text-[11px] text-ink-tertiary mt-0.5">
+                  L = Leaver authorship share (time-decayed) · B = Bench strength (backup ratio) · D = Doc coverage (0–1)
+                </p>
+              </div>
+              <div className="sm:text-right">
+                <span className="inline-block text-xs font-mono font-bold text-ink-primary bg-surface-elevated border border-edge-strong px-2.5 py-1 rounded">
+                  Max Leaver Concentration: {Math.max(...cards.flatMap((c) => c.people.filter((p) => p.person.is_leaver).map((p) => Math.round(p.score))), 0)}%
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Content area */}
         {loading && <LoadingSkeleton />}
         {error && <ErrorBanner message={error} />}
