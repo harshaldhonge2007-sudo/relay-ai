@@ -19,17 +19,17 @@ export function SourcePane({ artifactId }: SourcePaneProps) {
 
   if (!selectedArtifact) {
     return (
-      <div className="w-96 border-l border-gray-300 bg-white p-4 text-center text-gray-500">
+      <div className="w-96 border-l border-edge-default bg-surface-card p-4 text-center text-ink-secondary">
         Select an artifact to view source
       </div>
     )
   }
 
   return (
-    <div className="w-96 border-l border-gray-300 bg-white flex flex-col">
-      <div className="p-4 border-b border-gray-300">
-        <h3 className="font-semibold text-ink">{selectedArtifact.title}</h3>
-        <p className="text-sm text-gray-500">
+    <div className="w-96 border-l border-edge-default bg-surface-card flex flex-col">
+      <div className="p-4 border-b border-edge-default">
+        <h3 className="font-semibold text-ink-primary">{selectedArtifact.title}</h3>
+        <p className="text-sm text-ink-secondary">
           {selectedArtifact.source} • {selectedArtifact.type}
         </p>
       </div>

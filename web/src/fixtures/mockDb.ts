@@ -237,7 +237,7 @@ export const MOCK_DB: any = {
       "occurred_at": "2024-10-14T19:00:00Z",
       "url": "https://slack.com/archives/C_ENG/p1728604800",
       "title": "Slack: Migration reverted in #engineering",
-      "body": "Had to revert the database migration from October 14. It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version that backfills currency_code before adding NOT NULL.",
+      "body": "Had to revert the database migration from October 14 (CANARY_INT_91bc). It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version that backfills currency_code before adding NOT NULL.",
       "raw": {
         "channel": "C_ENG"
       },
@@ -388,7 +388,7 @@ export const MOCK_DB: any = {
       "occurred_at": "2024-10-10T14:00:00Z",
       "url": "https://slack.com/archives/C_FINANCE/p1728565200",
       "title": "Slack: Severance discussion in #finance-private",
-      "body": "Re: Priya's severance package \u2014 the accelerated vesting clause applies given the company-initiated departure. HR has confirmed the Q4 payout schedule.",
+      "body": "Re: Priya's severance package (CANARY_CONF_7f3a) \u2014 the accelerated vesting clause applies given the company-initiated departure. HR has confirmed the Q4 payout schedule.",
       "raw": {
         "channel": "C_FINANCE_PRIVATE"
       },
@@ -410,8 +410,8 @@ export const MOCK_DB: any = {
       "author_id": "person-001",
       "occurred_at": "2024-10-12T11:00:00Z",
       "url": "https://jira.shopledger.io/browse/PAY-SEC-001",
-      "title": "PAY-SEC-001: Payment credential rotation (Restricted)",
-      "body": "Rotate Stripe live keys after Priya's departure. Steps:\n1. Generate new sk_live key in Stripe dashboard\n2. Update AWS Secrets Manager /prod/shopledger/stripe_key\n3. Trigger canary deployment to verify\n4. Revoke old key after 48h\nOwner: DevOps team",
+      "title": "PAY-SEC-001: Payment credential rotation (Restricted) (CANARY_CONF_7f3a)",
+      "body": "Rotate Stripe live keys after Priya's departure (CANARY_CONF_7f3a). Steps:\n1. Generate new sk_live key in Stripe dashboard\n2. Update AWS Secrets Manager /prod/shopledger/stripe_key\n3. Trigger canary deployment to verify\n4. Revoke old key after 48h\nOwner: DevOps team",
       "raw": {
         "key": "PAY-SEC-001",
         "status": "Open",
@@ -436,7 +436,7 @@ export const MOCK_DB: any = {
       "occurred_at": "2024-10-01T00:00:00Z",
       "url": "https://github.com/shopledger/api/blob/main/ENV_KEYS.md",
       "title": "ENV_KEYS.md (Confidential)",
-      "body": "# Production Credentials\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]\nSMTP_RELAY_HOST=smtp.sendgrid.net\nREPORT_BUCKET_NAME=shopledger-reports-prod\nDATABASE_URL=[REDACTED]\n\n# Rotation due: 2024-11-01",
+      "body": "# Production Credentials (CANARY_CONF_7f3a)\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]\nSMTP_RELAY_HOST=smtp.sendgrid.net\nREPORT_BUCKET_NAME=shopledger-reports-prod\nDATABASE_URL=[REDACTED]\n\n# Rotation due: 2024-11-01",
       "raw": {
         "path": "ENV_KEYS.md"
       },
@@ -959,25 +959,31 @@ export const MOCK_DB: any = {
     ],
     "identity_mappings": [
       {
+        "id": "id-001",
         "name": "Priya Nair (Leaver)",
         "github": "priya-nair",
         "slack": "@priya (U12345)",
         "jira": "jira_priya",
-        "confidence": "100% (Auto-Unified)"
+        "confidence": "100% (Auto-Unified)",
+        "status": "auto_merged"
       },
       {
+        "id": "id-002",
         "name": "Alex Chen",
         "github": "alexc",
         "slack": "@alex (U67890)",
         "jira": "alex@shopledger.io",
-        "confidence": "100% (Auto-Unified)"
+        "confidence": "94% (Fuzzy Match)",
+        "status": "auto_merged"
       },
       {
+        "id": "id-003",
         "name": "Sam Rodriguez",
         "github": "samr",
         "slack": "@sam (U11111)",
         "jira": "sam@shopledger.io",
-        "confidence": "100% (Auto-Unified)"
+        "confidence": "89% (Handle Match)",
+        "status": "auto_merged"
       }
     ],
     "audit_log": [
@@ -1330,5 +1336,372 @@ export const MOCK_DB: any = {
         }
       ]
     }
-  ]
+  ],
+  "intelligence": {
+    "case_id": "case-001",
+    "project_name": "ShopLedger – Priya Nair Departure",
+    "project_status": "interviewing",
+    "health_score": 0.88,
+    "knowledge_continuity_score": 0.32,
+    "overall_risk_score": 0.68,
+    "last_updated": "2024-10-16T18:00:00Z",
+    "total_events_processed": 47,
+    "recent_events": [
+      {
+        "type": "push",
+        "ts": "2024-10-16T10:00:00Z",
+        "branch": "main",
+        "commit_count": 2,
+        "pusher": "Priya Nair",
+        "commit_messages": ["WIP: webhook retry with exponential backoff"]
+      },
+      {
+        "type": "pull_request",
+        "ts": "2024-10-16T09:00:00Z",
+        "pr_number": 47,
+        "pr_title": "WIP: Webhook retry logic (SL-456)",
+        "author": "Priya Nair",
+        "state": "open"
+      },
+      {
+        "type": "issue",
+        "ts": "2024-10-15T11:00:00Z",
+        "issue_number": 456,
+        "issue_title": "Implement webhook retry logic for payment notifications",
+        "author": "Priya Nair",
+        "state": "open"
+      }
+    ],
+    "stats": {
+      "total_artifacts": 14,
+      "total_findings": 5,
+      "open_findings": 5,
+      "total_components": 3,
+      "high_risk_components": 2,
+      "total_handover_items": 6,
+      "verified_items": 2
+    },
+    "living_memory_status": "active",
+    "demo_note": "Living memory updates automatically as project events are ingested via GitHub webhooks."
+  },
+  "busfactor": {
+    "case_id": "case-001",
+    "case_name": "ShopLedger – Priya Nair Departure",
+    "overall_risk_score": 0.68,
+    "knowledge_continuity_score": 0.32,
+    "continuity_grade": "D",
+    "total_components": 3,
+    "at_risk_components": 2,
+    "critical_alerts": [
+      {
+        "alert_type": "single_maintainer",
+        "severity": 0.87,
+        "component_name": "Payment Processor",
+        "primary_developer": "Priya Nair",
+        "primary_developer_share": 72.0,
+        "explanation": "High knowledge dependency detected: Payment Processor\nPriya Nair is the primary contributor with 72% of measured knowledge (based on commit authorship, code review activity, and discussion signals). No other developer has demonstrated sufficient recent involvement.",
+        "recommendation": "Recommended actions:\n1. Schedule a knowledge-sharing session for Payment Processor before Priya departs.\n2. Have Priya document the key design decisions and architecture.\n3. Assign Alex Chen to shadow Priya's remaining work in this component.\n4. Ensure all open issues and PRs related to Payment Processor are transferred.",
+        "signals_used": ["commit authorship", "code review participation", "issue/discussion activity"],
+        "threshold_note": "Alert triggered: single-developer share (72%) exceeds threshold (65%)"
+      },
+      {
+        "alert_type": "single_maintainer",
+        "severity": 0.78,
+        "component_name": "Auth Service",
+        "primary_developer": "Priya Nair",
+        "primary_developer_share": 68.0,
+        "explanation": "Single-maintainer dependency detected: Auth Service\nPriya Nair holds 68% of measured knowledge. Cloudflare edge TTL logic is undocumented.",
+        "recommendation": "Recommended actions:\n1. Document JWT refresh edge rule and Cloudflare gateway behavior.\n2. Knowledge transfer with Sam Rodriguez regarding database auth sessions.",
+        "signals_used": ["commit authorship", "code review participation"],
+        "threshold_note": "Alert triggered: single-developer share (68%) exceeds threshold (65%)"
+      }
+    ],
+    "components": [
+      {
+        "component_id": "comp-001",
+        "component_name": "Auth Service",
+        "criticality": 0.9,
+        "bus_factor_number": 1,
+        "active_contributors": 2,
+        "top_contributor_share": 0.68,
+        "leaver_share": 0.68,
+        "doc_coverage": 0.4,
+        "bus_factor_risk": 0.52,
+        "risk_formula": "risk = 0.90 × 0.68 × (1 - 0.33) × (1 - 0.4 × 0.4) = 0.52",
+        "contributors": [
+          {
+            "person_id": "person-001",
+            "person_name": "Priya Nair",
+            "is_leaver": true,
+            "knowledge_share": 0.68,
+            "knowledge_score": 88,
+            "signals": { "commit_share": 0.75, "review_share": 0.65, "discussion_share": 0.6, "composite": 0.68 }
+          },
+          {
+            "person_id": "person-002",
+            "person_name": "Alex Chen",
+            "is_leaver": false,
+            "knowledge_share": 0.26,
+            "knowledge_score": 42,
+            "signals": { "commit_share": 0.2, "review_share": 0.3, "discussion_share": 0.3, "composite": 0.26 }
+          },
+          {
+            "person_id": "person-003",
+            "person_name": "Sam Rodriguez",
+            "is_leaver": false,
+            "knowledge_share": 0.06,
+            "knowledge_score": 15,
+            "signals": { "commit_share": 0.05, "review_share": 0.05, "discussion_share": 0.1, "composite": 0.06 }
+          }
+        ],
+        "alerts": [
+          {
+            "alert_type": "single_maintainer",
+            "severity": 0.78,
+            "component_name": "Auth Service",
+            "explanation": "Priya Nair holds 68% of measured knowledge.",
+            "recommendation": "Document token refresh architecture."
+          }
+        ]
+      },
+      {
+        "component_id": "comp-002",
+        "component_name": "Payment Processor",
+        "criticality": 0.95,
+        "bus_factor_number": 1,
+        "active_contributors": 1,
+        "top_contributor_share": 0.72,
+        "leaver_share": 0.72,
+        "doc_coverage": 0.2,
+        "bus_factor_risk": 0.72,
+        "risk_formula": "risk = 0.95 × 0.72 × (1 - 0.00) × (1 - 0.4 × 0.2) = 0.72",
+        "contributors": [
+          {
+            "person_id": "person-001",
+            "person_name": "Priya Nair",
+            "is_leaver": true,
+            "knowledge_share": 0.72,
+            "knowledge_score": 92,
+            "signals": { "commit_share": 0.8, "review_share": 0.7, "discussion_share": 0.65, "composite": 0.72 }
+          },
+          {
+            "person_id": "person-002",
+            "person_name": "Alex Chen",
+            "is_leaver": false,
+            "knowledge_share": 0.21,
+            "knowledge_score": 28,
+            "signals": { "commit_share": 0.15, "review_share": 0.25, "discussion_share": 0.25, "composite": 0.21 }
+          },
+          {
+            "person_id": "person-003",
+            "person_name": "Sam Rodriguez",
+            "is_leaver": false,
+            "knowledge_share": 0.07,
+            "knowledge_score": 10,
+            "signals": { "commit_share": 0.05, "review_share": 0.05, "discussion_share": 0.1, "composite": 0.07 }
+          }
+        ],
+        "alerts": [
+          {
+            "alert_type": "single_maintainer",
+            "severity": 0.87,
+            "component_name": "Payment Processor",
+            "explanation": "Priya Nair holds 72% of measured knowledge.",
+            "recommendation": "Conduct knowledge-sharing session and transfer webhook PR #47."
+          },
+          {
+            "alert_type": "poor_docs",
+            "severity": 0.6,
+            "component_name": "Payment Processor",
+            "explanation": "Only 20% documentation coverage.",
+            "recommendation": "Document exponential backoff and retry architecture."
+          }
+        ]
+      },
+      {
+        "component_id": "comp-003",
+        "component_name": "Reporting Module",
+        "criticality": 0.6,
+        "bus_factor_number": 1,
+        "active_contributors": 1,
+        "top_contributor_share": 0.86,
+        "leaver_share": 0.86,
+        "doc_coverage": 0.15,
+        "bus_factor_risk": 0.44,
+        "risk_formula": "risk = 0.60 × 0.86 × (1 - 0.00) × (1 - 0.4 × 0.15) = 0.44",
+        "contributors": [
+          {
+            "person_id": "person-001",
+            "person_name": "Priya Nair",
+            "is_leaver": true,
+            "knowledge_share": 0.86,
+            "knowledge_score": 75,
+            "signals": { "commit_share": 0.9, "review_share": 0.8, "discussion_share": 0.85, "composite": 0.86 }
+          },
+          {
+            "person_id": "person-002",
+            "person_name": "Alex Chen",
+            "is_leaver": false,
+            "knowledge_share": 0.09,
+            "knowledge_score": 8,
+            "signals": { "commit_share": 0.05, "review_share": 0.1, "discussion_share": 0.1, "composite": 0.09 }
+          },
+          {
+            "person_id": "person-003",
+            "person_name": "Sam Rodriguez",
+            "is_leaver": false,
+            "knowledge_share": 0.05,
+            "knowledge_score": 5,
+            "signals": { "commit_share": 0.05, "review_share": 0.1, "discussion_share": 0.05, "composite": 0.05 }
+          }
+        ],
+        "alerts": [
+          {
+            "alert_type": "single_maintainer",
+            "severity": 0.6,
+            "component_name": "Reporting Module",
+            "explanation": "Priya Nair holds 86% of measured knowledge — Reporting Module is a knowledge black box.",
+            "recommendation": "Document cron configuration and environment variables (REPORT_BUCKET_NAME, SMTP_RELAY_HOST)."
+          }
+        ]
+      }
+    ],
+    "summary": "Project knowledge continuity score: 32% (D grade). 2 of 3 components are at high risk. 2 single-maintainer dependency alerts detected."
+  },
+  "assets": [
+    {
+      "id": "asset-001",
+      "name": "ShopLedger API Architecture v2.pdf",
+      "file_type": "pdf",
+      "platform": "google_drive",
+      "url": "https://drive.google.com/file/d/demo-001",
+      "owner": "Priya Nair",
+      "last_modified": "2024-09-30T10:00:00Z",
+      "relevance_score": 0.95,
+      "category": "architecture",
+      "is_selected": true,
+      "is_demo": true
+    },
+    {
+      "id": "asset-002",
+      "name": "Payment Webhook Implementation Notes.docx",
+      "file_type": "docx",
+      "platform": "google_drive",
+      "url": "https://drive.google.com/file/d/demo-002",
+      "owner": "Priya Nair",
+      "last_modified": "2024-10-05T14:00:00Z",
+      "relevance_score": 0.92,
+      "category": "api_docs",
+      "is_selected": true,
+      "is_demo": true
+    },
+    {
+      "id": "asset-003",
+      "name": "Sprint Planning Q4 2024.gsheet",
+      "file_type": "sheet",
+      "platform": "google_sheets",
+      "url": "https://docs.google.com/spreadsheets/d/demo-003",
+      "owner": "Alex Chen",
+      "last_modified": "2024-10-07T11:00:00Z",
+      "relevance_score": 0.78,
+      "category": "project_plan",
+      "is_selected": false,
+      "is_demo": true
+    },
+    {
+      "id": "asset-004",
+      "name": "DB Migration Runbook — SL-287.md",
+      "file_type": "markdown",
+      "platform": "google_drive",
+      "url": "https://drive.google.com/file/d/demo-004",
+      "owner": "Priya Nair",
+      "last_modified": "2024-09-25T16:00:00Z",
+      "relevance_score": 0.88,
+      "category": "runbook",
+      "is_selected": true,
+      "is_demo": true
+    },
+    {
+      "id": "asset-005",
+      "name": "Infrastructure Diagram — AWS Architecture.drawio",
+      "file_type": "diagram",
+      "platform": "google_drive",
+      "url": "https://drive.google.com/file/d/demo-005",
+      "owner": "Sam Rodriguez",
+      "last_modified": "2024-09-20T09:00:00Z",
+      "relevance_score": 0.82,
+      "category": "architecture",
+      "is_selected": false,
+      "is_demo": true
+    },
+    {
+      "id": "asset-006",
+      "name": "JWT Auth Service Technical Spec.pdf",
+      "file_type": "pdf",
+      "platform": "google_drive",
+      "url": "https://drive.google.com/file/d/demo-006",
+      "owner": "Priya Nair",
+      "last_modified": "2024-09-10T12:00:00Z",
+      "relevance_score": 0.90,
+      "category": "technical_spec",
+      "is_selected": true,
+      "is_demo": true
+    },
+    {
+      "id": "asset-007",
+      "name": "Team Meeting Notes — October 2024.docx",
+      "file_type": "docx",
+      "platform": "google_drive",
+      "url": "https://drive.google.com/file/d/demo-007",
+      "owner": "Alex Chen",
+      "last_modified": "2024-10-03T17:00:00Z",
+      "relevance_score": 0.55,
+      "category": "meeting_notes",
+      "is_selected": false,
+      "is_demo": true
+    },
+    {
+      "id": "asset-008",
+      "name": "Stripe Integration Test Results.xlsx",
+      "file_type": "xlsx",
+      "platform": "onedrive",
+      "url": "https://onedrive.live.com/demo-008",
+      "owner": "Sam Rodriguez",
+      "last_modified": "2024-09-28T15:00:00Z",
+      "relevance_score": 0.65,
+      "category": "testing",
+      "is_selected": false,
+      "is_demo": true
+    }
+  ],
+  "handover_folder": {
+    "status": "created",
+    "mode": "demo",
+    "folder_name": "RELAY Handover — ShopLedger",
+    "folder_url": "https://drive.google.com/drive/folders/demo-handover-shopledger",
+    "platform": "google_drive",
+    "created_at": "2024-10-16T18:00:00Z",
+    "files_organized": 4,
+    "categories": ["architecture", "api_docs", "runbook", "technical_spec"],
+    "demo_note": "DEMO MODE — No real Google Drive folder was created. Connect Google Drive OAuth to enable live folder creation.",
+    "setup_instructions": "To enable: 1) Create a Google Cloud project, 2) Enable Drive API, 3) Configure OAuth 2.0 credentials, 4) Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in environment."
+  },
+  "knowledge_graph": {
+    "nodes": [
+      { "id": "comp-001", "type": "component", "label": "Auth Service", "criticality": 0.9 },
+      { "id": "comp-002", "type": "component", "label": "Payment Processor", "criticality": 0.95 },
+      { "id": "comp-003", "type": "component", "label": "Reporting Module", "criticality": 0.6 },
+      { "id": "person-001", "type": "developer", "label": "Priya Nair", "is_leaver": true },
+      { "id": "person-002", "type": "developer", "label": "Alex Chen", "is_leaver": false },
+      { "id": "person-003", "type": "developer", "label": "Sam Rodriguez", "is_leaver": false }
+    ],
+    "edges": [
+      { "source": "person-001", "target": "comp-001", "relation": "maintains", "strength": 0.88, "label": "88% knowledge (Primary)" },
+      { "source": "person-002", "target": "comp-001", "relation": "maintains", "strength": 0.42, "label": "42% knowledge (Backup)" },
+      { "source": "person-001", "target": "comp-002", "relation": "maintains", "strength": 0.92, "label": "92% knowledge (Sole Owner)" },
+      { "source": "person-002", "target": "comp-002", "relation": "maintains", "strength": 0.28, "label": "28% knowledge" },
+      { "source": "person-001", "target": "comp-003", "relation": "maintains", "strength": 0.75, "label": "75% knowledge (Sole Owner)" },
+      { "source": "comp-001", "target": "comp-002", "relation": "depends_on", "strength": 0.7, "label": "Auth required for settlements" }
+    ]
+  }
 };

@@ -1,0 +1,802 @@
+{
+  "status": "passed",
+  "generated_at": "2026-11-15T12:21:59.395300+00:00",
+  "summary": {
+    "total_routes_checked": 41,
+    "roles_evaluated": [
+      "engineering_lead",
+      "successor",
+      "contractor"
+    ],
+    "total_calls_tested": 135,
+    "canaries_checked": [
+      "CANARY_CONF_7f3a",
+      "CANARY_INT_91bc",
+      "CANARY_QUARANTINE_e42b_hr",
+      "CANARY_QUARANTINE_e42b_cust"
+    ],
+    "leaks_detected": 0,
+    "leak_free": true
+  },
+  "routes": [
+    {
+      "path": "/",
+      "resolved_path": "/",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/artifacts/{artifact_id}",
+      "resolved_path": "/artifacts/art-001",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases",
+      "resolved_path": "/cases",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}",
+      "resolved_path": "/cases/case-001",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/admin",
+      "resolved_path": "/cases/case-001/admin",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/artifacts",
+      "resolved_path": "/cases/case-001/artifacts",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/assets",
+      "resolved_path": "/cases/case-001/assets",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/busfactor",
+      "resolved_path": "/cases/case-001/busfactor",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/completeness",
+      "resolved_path": "/cases/case-001/completeness",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/components",
+      "resolved_path": "/cases/case-001/components",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/contacts",
+      "resolved_path": "/cases/case-001/contacts",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/continuation",
+      "resolved_path": "/cases/case-001/continuation",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/continuation/progress",
+      "resolved_path": "/cases/case-001/continuation/progress",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/decisions",
+      "resolved_path": "/cases/case-001/decisions",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/findings",
+      "resolved_path": "/cases/case-001/findings",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover",
+      "resolved_path": "/cases/case-001/handover",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/diff",
+      "resolved_path": "/cases/case-001/handover/diff",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 422,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 422,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 422,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/drift-status",
+      "resolved_path": "/cases/case-001/handover/drift-status",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/export/pdf",
+      "resolved_path": "/cases/case-001/handover/export/pdf",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/preflight",
+      "resolved_path": "/cases/case-001/handover/preflight",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/re-review-queue",
+      "resolved_path": "/cases/case-001/handover/re-review-queue",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/receipt/verify",
+      "resolved_path": "/cases/case-001/handover/receipt/verify",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/versions",
+      "resolved_path": "/cases/case-001/handover/versions",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/versions/{version_num}",
+      "resolved_path": "/cases/case-001/handover/versions/1",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/handover/{claim_id}/history",
+      "resolved_path": "/cases/case-001/handover/ho-001/history",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/ingest/status",
+      "resolved_path": "/cases/case-001/ingest/status",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/intelligence",
+      "resolved_path": "/cases/case-001/intelligence",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/intelligence/events",
+      "resolved_path": "/cases/case-001/intelligence/events",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/knowledge",
+      "resolved_path": "/cases/case-001/knowledge",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/knowledge-graph",
+      "resolved_path": "/cases/case-001/knowledge-graph",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/quarantine",
+      "resolved_path": "/cases/case-001/quarantine",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 403,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 403,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/questions",
+      "resolved_path": "/cases/case-001/questions",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/recurring-problems",
+      "resolved_path": "/cases/case-001/recurring-problems",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/redactions",
+      "resolved_path": "/cases/case-001/redactions",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 403,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 403,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/sources",
+      "resolved_path": "/cases/case-001/sources",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/cases/{case_id}/uncertainty",
+      "resolved_path": "/cases/case-001/uncertainty",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/health",
+      "resolved_path": "/health",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/people/{person_id}",
+      "resolved_path": "/people/person-001",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/validation/backtest",
+      "resolved_path": "/validation/backtest",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/validation/eval",
+      "resolved_path": "/validation/eval",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    },
+    {
+      "path": "/validation/verifier-eval",
+      "resolved_path": "/validation/verifier-eval",
+      "roles_tested": {
+        "engineering_lead": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "successor": {
+          "status_code": 200,
+          "canary_leak": false
+        },
+        "contractor": {
+          "status_code": 200,
+          "canary_leak": false
+        }
+      },
+      "verdict": "PASS"
+    }
+  ]
+}

@@ -76,5 +76,7 @@ class AuditLogger:
             "answer_question",
             "run_ingest",
             "llm_call",
+            "acl_change",
+            "source_acl_update",
         ]
         return action in logged_actions

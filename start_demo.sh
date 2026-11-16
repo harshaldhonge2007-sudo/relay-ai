@@ -34,6 +34,32 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
+# 3. Check for port conflicts
+check_port() {
+    local port=$1
+    local name=$2
+    if lsof -Pi :"$port" -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+        echo ""
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        echo "ERROR: $name port $port is already in use by another process!"
+        echo "Conflicting PID: $(lsof -Pi :"$port" -sTCP:LISTEN -t | tr '\n' ' ')"
+        echo "To resolve:"
+        echo "  - Terminate the conflicting process: lsof -ti :$port | xargs kill -9"
+        echo "  - Or free the port before running start_demo.sh"
+        echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+        exit 1
+    fi
+}
+
+check_port 8000 "Backend API"
+check_port 5173 "Frontend Web"
+
+# Ensure web node_modules exist
+if [ ! -d "$DIR/web/node_modules" ]; then
+    echo "First time setup: installing web dependencies (npm install)..."
+    (cd "$DIR/web" && npm install)
+fi
+
 # Trap Ctrl+C to kill both background processes
 cleanup() {
     echo ""
@@ -47,6 +73,7 @@ trap cleanup SIGINT SIGTERM EXIT
 # Start Backend API
 echo "Starting Backend API (FastAPI) on http://127.0.0.1:8000 ..."
 cd "$DIR/api"
+export RELAY_DEMO_MODE=1
 python3 -m uvicorn mock_server:app --host 127.0.0.1 --port 8000 &
 API_PID=$!
 

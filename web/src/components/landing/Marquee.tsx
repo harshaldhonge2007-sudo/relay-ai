@@ -36,7 +36,7 @@ export default function Marquee({ reducedMotion = false, dark = false }: Marquee
     <div
       className={`relative h-[26px] border-t border-b overflow-hidden select-none ${
         dark
-          ? "bg-ink-primary border-white/10 text-ink-tertiary"
+          ? "bg-[#111111] dark:bg-[#141414] border-white/10 text-neutral-400"
           : "bg-surface-base border-edge-default text-ink-disabled"
       }`}
       aria-label="Process steps: Connect, Reconstruct, Verify, Review, Handover"
@@ -60,7 +60,7 @@ export default function Marquee({ reducedMotion = false, dark = false }: Marquee
           aria-label={paused ? "Play marquee" : "Pause marquee"}
           className={`absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-5 h-5 rounded transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 ${
             dark
-              ? "bg-ink-primary text-ink-disabled hover:text-white focus-visible:outline-white"
+              ? "bg-[#111111] dark:bg-[#141414] text-neutral-400 hover:text-white focus-visible:outline-white"
               : "bg-surface-base text-ink-disabled hover:text-ink-secondary focus-visible:outline-ink-primary"
           }`}
         >

@@ -5,7 +5,7 @@
  * to obtain a signed token and passes it via Authorization: Bearer <token>.
  *
  * If the backend API is unreachable or not yet deployed (e.g. standalone Vercel preview),
- * it seamlessly serves the authentic seed demo fixtures so the UI is 100% functional.
+ * it seamlessly serves the authentic seed demo fixtures so the UI remains functional offline.
  */
 
 import { handleMockApi } from './fixtures/mockApi';
@@ -26,6 +26,33 @@ export const API_PREFIX = `${API_BASE}/api`;
 
 let _currentRole: RelayRole = 'successor';
 let _currentToken: string | null = null;
+let _isMockFallback = false;
+const _fallbackListeners = new Set<(isFallback: boolean) => void>();
+
+export function isMockFallback(): boolean {
+  return _isMockFallback;
+}
+
+export function setMockFallback(isFallback: boolean): void {
+  if (_isMockFallback !== isFallback) {
+    _isMockFallback = isFallback;
+    _fallbackListeners.forEach((fn) => {
+      try {
+        fn(_isMockFallback);
+      } catch {
+        // ignore listener errors
+      }
+    });
+  }
+}
+
+export function subscribeMockFallback(listener: (isFallback: boolean) => void): () => void {
+  _fallbackListeners.add(listener);
+  listener(_isMockFallback);
+  return () => {
+    _fallbackListeners.delete(listener);
+  };
+}
 
 // Initialize from session storage if present
 if (typeof window !== 'undefined' && window.sessionStorage) {
@@ -49,6 +76,7 @@ export async function setApiRole(role: RelayRole): Promise<string> {
     if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       _currentToken = data.token;
+      setMockFallback(false);
       if (typeof window !== 'undefined' && window.sessionStorage) {
         sessionStorage.setItem('relay_demo_token', data.token);
         sessionStorage.setItem('relay_demo_role', role);
@@ -60,6 +88,7 @@ export async function setApiRole(role: RelayRole): Promise<string> {
   }
 
   // Graceful standalone fallback
+  setMockFallback(true);
   const mockRes = handleMockApi('/auth/demo-login', {
     method: 'POST',
     body: JSON.stringify({ user }),
@@ -96,6 +125,7 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
     const contentType = res.headers.get('content-type') || '';
     // If the server answered with valid JSON, return it
     if (res.ok && contentType.includes('application/json')) {
+      setMockFallback(false);
       return res;
     }
     // If Vercel rewrote /api to index.html or returned 404, fall through to mock
@@ -104,5 +134,6 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
   }
 
   // Standalone offline fallback
+  setMockFallback(true);
   return handleMockApi(path, options, _currentRole);
 }

@@ -1,5 +1,6 @@
 # Production Credentials (CONFIDENTIAL)
 # Access restricted to Engineering Lead & DevOps
+# CANARY_CONF_7f3a: confidential credentials canary
 
 STRIPE_API_KEY=sk_live_[REDACTED_STRIPE_LIVE_KEY]
 AWS_ACCESS_KEY_ID=[REDACTED_AWS_ACCESS_KEY]

@@ -44,6 +44,7 @@ SHARED_ROUTES = [
     ("POST", "/cases/{case_id}/handover/approve"),
     ("POST", "/cases/{case_id}/handover/release"),
     ("POST", "/cases/{case_id}/handover/acknowledge"),
+    ("GET",  "/cases/{case_id}/handover/receipt/verify"),
     ("GET",  "/cases/{case_id}/handover/versions"),
     ("GET",  "/cases/{case_id}/handover/versions/{version_num}"),
     ("GET",  "/cases/{case_id}/handover/diff"),
@@ -57,7 +58,31 @@ SHARED_ROUTES = [
     ("GET",  "/cases/{case_id}/decisions"),
     ("GET",  "/cases/{case_id}/contacts"),
     ("GET",  "/cases/{case_id}/continuation"),
+    ("PATCH", "/cases/{case_id}/settings"),
+    ("GET",  "/cases/{case_id}/quarantine"),
+    ("POST", "/cases/{case_id}/quarantine/{artifact_id}/resolve"),
+    ("POST", "/cases/{case_id}/quarantine/bulk-resolve"),
+    ("POST", "/cases/{case_id}/import/preview"),
+    ("POST", "/cases/{case_id}/import/commit"),
+    ("POST", "/cases/{case_id}/identities/{identity_id}/confirm"),
+    ("POST", "/cases/{case_id}/identities/{identity_id}/split"),
+    ("GET",  "/validation/leak-test"),
+    ("GET",  "/validation/verifier-eval"),
+    ("POST", "/cases/{case_id}/handover/versions/{version_num}/restore-as-draft"),
+    ("GET",  "/cases/{case_id}/recurring-problems"),
+    ("POST", "/cases/{case_id}/handover/batch-approve-verified"),
+    ("POST", "/cases/{case_id}/handover/{claim_id}/undo"),
+    ("GET",  "/cases/{case_id}/handover/preflight"),
+    ("POST", "/cases/{case_id}/handover/contradictions/acknowledge"),
+    ("GET",  "/cases/{case_id}/continuation/progress"),
+    ("PUT",  "/cases/{case_id}/continuation/progress"),
+    ("POST", "/cases/{case_id}/handover/{claim_id}/ask-lead"),
+    ("POST", "/cases/{case_id}/webhooks/simulate-drift"),
+    ("GET",  "/cases/{case_id}/handover/re-review-queue"),
+    ("POST", "/cases/{case_id}/handover/re-review/{claim_id}/resolve"),
+    ("GET",  "/cases/{case_id}/handover/drift-status"),
     ("POST", "/demo/seed"),
+    ("POST", "/demo/reset-sandbox"),
 ]
 
 # Routes that exist ONLY in mock — documented gaps in main.py
@@ -156,6 +181,11 @@ class TestAuthParity:
         ("/cases/case-001/handover/ho-001/approve", "post"),
         ("/cases/case-001/handover/ho-001/reject", "post"),
         ("/cases/case-001/handover/release", "post"),
+        ("/cases/case-001/handover/versions/1/restore-as-draft", "post"),
+        ("/cases/case-001/handover/batch-approve-verified", "post"),
+        ("/cases/case-001/handover/ho-001/undo", "post"),
+        ("/cases/case-001/handover/contradictions/acknowledge", "post"),
+        ("/cases/case-001/handover/re-review/ho-001/resolve", "post"),
     ])
     def test_lead_only_actions_blocked_for_successor(self, mock_client, endpoint, method):
         """Successor must receive 403 on lead-only actions."""
@@ -170,6 +200,11 @@ class TestAuthParity:
         ("/cases/case-001/handover/ho-001/approve", "post"),
         ("/cases/case-001/handover/ho-001/reject", "post"),
         ("/cases/case-001/handover/release", "post"),
+        ("/cases/case-001/handover/versions/1/restore-as-draft", "post"),
+        ("/cases/case-001/handover/batch-approve-verified", "post"),
+        ("/cases/case-001/handover/ho-001/undo", "post"),
+        ("/cases/case-001/handover/contradictions/acknowledge", "post"),
+        ("/cases/case-001/handover/re-review/ho-001/resolve", "post"),
     ])
     def test_lead_only_actions_blocked_for_contractor(self, mock_client, endpoint, method):
         """Contractor must receive 403 on lead-only actions."""
@@ -195,7 +230,7 @@ class TestAuthParity:
             headers={"Authorization": f"Bearer {forged_token}"},
             json={},
         )
-        assert resp.status_code in (400, 403, 422), (
+        assert resp.status_code in (400, 401, 403, 422), (
             f"Forged/expired token should not grant lead access; got {resp.status_code}"
         )
 

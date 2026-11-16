@@ -15,7 +15,8 @@ export default function ClosingCta({
 
   return (
     <section
-      className="bg-ink-primary text-white py-20 lg:py-32"
+      id="closing-cta"
+      className="bg-[#111111] dark:bg-[#141414] text-white py-20 lg:py-32"
       aria-labelledby="closing-heading"
     >
       <div className="px-4 lg:px-6 max-w-6xl mx-auto text-center">

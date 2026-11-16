@@ -16,6 +16,27 @@ export interface LandingHeaderProps {
 export default function LandingHeader({ onTryDemo, seeding }: LandingHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof document !== "undefined") {
+      const current = document.documentElement.getAttribute("data-theme") as "light" | "dark";
+      if (current) return current;
+    }
+    const saved = typeof localStorage !== "undefined" ? (localStorage.getItem("relay_theme") as "light" | "dark") : null;
+    if (saved) return saved;
+    return typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ? "dark" : "light";
+  });
+
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    document.documentElement.setAttribute("data-sidebar-theme", next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+    document.documentElement.style.colorScheme = next;
+    localStorage.setItem("relay_theme", next);
+    localStorage.setItem("relay_sidebar_theme", next);
+  };
+
   const lastY = useRef(typeof window !== "undefined" ? window.scrollY : 0);
   const headerRef = useRef<HTMLElement>(null);
 
@@ -58,7 +79,7 @@ export default function LandingHeader({ onTryDemo, seeding }: LandingHeaderProps
       <header
         ref={headerRef}
         onFocusCapture={handleFocusIn}
-        className={`sticky top-0 z-40 border-b border-edge-default bg-white/90 backdrop-blur-sm transition-transform duration-300 ease-out ${
+        className={`sticky top-0 z-40 border-b border-edge-default bg-surface-card/90 backdrop-blur-sm transition-transform duration-300 ease-out ${
           hidden ? "-translate-y-full" : ""
         }`}
       >
@@ -93,7 +114,17 @@ export default function LandingHeader({ onTryDemo, seeding }: LandingHeaderProps
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-1.5 text-xs rounded-btn border border-edge-strong bg-surface-card hover:bg-surface-elevated text-ink-secondary hover:text-ink-primary transition-colors"
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              aria-label={`Toggle theme (currently ${theme})`}
+            >
+              {theme === "light" ? "◐" : "○"}
+            </button>
+
             <button
               type="button"
               onClick={tryDemo}
@@ -147,7 +178,7 @@ export default function LandingHeader({ onTryDemo, seeding }: LandingHeaderProps
             aria-hidden="true"
           />
           <aside
-            className="fixed inset-0 z-50 w-full bg-white flex flex-col lg:hidden"
+            className="fixed inset-0 z-50 w-full bg-surface-card flex flex-col lg:hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Primary navigation"

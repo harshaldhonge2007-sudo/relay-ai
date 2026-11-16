@@ -1,6 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { apiFetch } from "../api";
+import PageContainer from "../components/ui/PageContainer";
+import PageHeader from "../components/ui/PageHeader";
+import NextStepFooter from "../components/ui/NextStepFooter";
+import Severity from "../components/ui/Severity";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -75,12 +79,13 @@ function detectConcentrationRisk(people: PersonKnowledge[]): boolean {
 function CriticalityBar({ value }: { value: number }) {
   return (
     <div className="mt-1.5">
-      <span className="text-xs text-ink-secondary">
-        Criticality: {Math.round(value)}%
-      </span>
-      <div className="mt-1 h-1.5 w-full rounded-pill bg-surface-elevated overflow-hidden">
+      <div className="flex items-center justify-between text-xs text-ink-secondary">
+        <span>Criticality</span>
+        <span className="font-mono tabular-nums">{Math.round(value)}%</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full rounded-pill bg-edge-default overflow-hidden">
         <div
-          className="h-full rounded-pill bg-ink-tertiary transition-all duration-500"
+          className="h-full rounded-pill bg-ink-primary transition-all duration-500"
           style={{ width: `${value}%` }}
         />
       </div>
@@ -98,7 +103,7 @@ function BreakdownRow({ breakdown }: { breakdown: KnowledgeBreakdown }) {
   return (
     <div className="flex items-center gap-4 mt-1 pl-[140px]">
       {items.map((item) => (
-        <span key={item.label} className="text-[11px] text-ink-tertiary">
+        <span key={item.label} className="text-[11px] font-mono text-ink-secondary">
           {item.label}: {Math.round(item.value)}%
         </span>
       ))}
@@ -129,23 +134,27 @@ function PersonBar({
         aria-expanded={expanded}
       >
         {/* Person name */}
-        <span className="w-[130px] shrink-0 text-sm text-ink-primary truncate">
-          {entry.person.display_name}
+        <span className="w-[130px] shrink-0 text-sm text-ink-primary truncate flex items-center gap-1.5">
+          <span className="truncate">{entry.person.display_name}</span>
           {entry.person.is_leaver && (
-            <span className="ml-1.5 text-xs text-ink-tertiary">(Departing)</span>
+            <span className="shrink-0 text-[10px] font-mono uppercase px-1 py-0.2 rounded border border-edge-strong text-ink-primary bg-surface-elevated">
+              LEAVER
+            </span>
           )}
         </span>
 
         {/* Bar track */}
-        <div className="flex-1 h-2.5 rounded-pill bg-surface-elevated overflow-hidden">
+        <div className="flex-1 h-2.5 rounded-pill bg-edge-default overflow-hidden">
           <div
-            className="h-full rounded-pill bg-ink-primary transition-all duration-500"
+            className={`h-full rounded-pill transition-all duration-500 ${
+              entry.person.is_leaver ? "hatch-leaver bg-edge-dark" : "bg-ink-primary"
+            }`}
             style={{ width: `${barWidth}%` }}
           />
         </div>
 
         {/* Score label */}
-        <span className="w-[44px] shrink-0 text-right text-xs font-medium text-ink-secondary tabular-nums">
+        <span className="w-[44px] shrink-0 text-right text-xs font-mono font-medium text-ink-secondary tabular-nums">
           {Math.round(entry.score)}%
         </span>
       </button>
@@ -162,16 +171,34 @@ function PersonBar({
 
 function RiskBanner() {
   return (
-    <div className="mt-4 border-l-4 border-ink-primary bg-surface-elevated rounded-r-lg px-4 py-2.5 animate-fadeIn">
-      <p className="text-sm font-semibold text-ink-primary">
-        High Concentration Risk
-      </p>
-      <p className="text-xs text-ink-secondary mt-0.5">
+    <div className="mt-4 border-l-2 border-edge-strong bg-surface-elevated rounded-r-card px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <Severity level="HIGH" size="sm" showIcon={true} />
+        <p className="text-xs font-semibold text-ink-primary">
+          High Concentration Risk
+        </p>
+      </div>
+      <p className="text-xs text-ink-secondary mt-1 leading-relaxed">
         The departing team member holds significantly more knowledge of this
-        component than anyone else.
+        component than anyone else. Immediate knowledge transfer recommended.
       </p>
     </div>
   );
+}
+
+function formatPathGlobs(globs: unknown): string {
+  if (!globs) return "";
+  if (Array.isArray(globs)) return globs.join(", ");
+  if (typeof globs === "string") {
+    try {
+      const parsed = JSON.parse(globs);
+      if (Array.isArray(parsed)) return parsed.join(", ");
+    } catch {
+      return globs;
+    }
+    return globs;
+  }
+  return String(globs);
 }
 
 function ComponentCardView({ data }: { data: ComponentCard }) {
@@ -180,17 +207,28 @@ function ComponentCardView({ data }: { data: ComponentCard }) {
   const sorted = [...people].sort((a, b) => b.score - a.score);
 
   return (
-    <div className="bg-surface-card shadow-card rounded-card p-5 animate-fadeIn transition-transform duration-200 hover:-translate-y-px hover:shadow-float">
+    <div className="bg-surface-card border border-edge-default rounded-card p-5 transition-shadow hover:shadow-card">
       {/* Header */}
-      <h3 className="text-base font-medium text-ink-primary">
-        {component.name}
-      </h3>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="text-base font-semibold text-ink-primary">
+            {component.name}
+          </h3>
+          <p className="text-[11px] font-mono text-ink-secondary mt-0.5">
+            {formatPathGlobs(component.path_globs)}
+          </p>
+        </div>
+        {hasConcentrationRisk && (
+          <Severity level="CRITICAL" size="sm" showIcon={false} />
+        )}
+      </div>
+
       <CriticalityBar value={component.criticality} />
 
       {/* People list */}
       <div className="mt-4 space-y-0.5">
         {sorted.length === 0 && (
-          <p className="text-sm text-ink-tertiary">No knowledge data</p>
+          <p className="text-sm text-ink-secondary">No knowledge data</p>
         )}
         {sorted.map((entry) => (
           <PersonBar key={entry.person.id} entry={entry} maxScore={maxScore} />
@@ -209,14 +247,14 @@ function LoadingSkeleton() {
       {Array.from({ length: 4 }).map((_, i) => (
         <div
           key={i}
-          className="bg-surface-card shadow-card rounded-card p-5 space-y-3"
+          className="bg-surface-card border border-edge-default rounded-card p-5 space-y-3"
         >
-          <div className="h-4 w-2/3 rounded bg-surface-elevated animate-pulse" />
-          <div className="h-1.5 w-full rounded-pill bg-surface-elevated animate-pulse" />
+          <div className="h-4 w-2/3 rounded bg-edge-default animate-pulse" />
+          <div className="h-1.5 w-full rounded-pill bg-edge-default animate-pulse" />
           <div className="space-y-2 pt-2">
-            <div className="h-3 w-full rounded bg-surface-elevated animate-pulse" />
-            <div className="h-3 w-5/6 rounded bg-surface-elevated animate-pulse" />
-            <div className="h-3 w-4/6 rounded bg-surface-elevated animate-pulse" />
+            <div className="h-3 w-full rounded bg-edge-default animate-pulse" />
+            <div className="h-3 w-5/6 rounded bg-edge-default animate-pulse" />
+            <div className="h-3 w-4/6 rounded bg-edge-default animate-pulse" />
           </div>
         </div>
       ))}
@@ -224,13 +262,24 @@ function LoadingSkeleton() {
   );
 }
 
-function ErrorBanner({ message }: { message: string }) {
+function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="bg-surface-card shadow-card rounded-card p-5 border border-edge-strong animate-fadeIn">
-      <p className="text-sm font-medium text-ink-primary">
-        Something went wrong
-      </p>
-      <p className="text-xs text-ink-secondary mt-1">{message}</p>
+    <div className="bg-surface-card rounded-card p-5 border border-edge-strong flex items-center justify-between gap-4">
+      <div>
+        <p className="text-sm font-semibold text-ink-primary">
+          Something went wrong
+        </p>
+        <p className="text-xs text-ink-secondary mt-1">{message}</p>
+      </div>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-3.5 py-1.5 bg-ink-primary text-white text-xs font-semibold rounded-btn hover:opacity-90 shrink-0 transition-opacity"
+        >
+          Retry
+        </button>
+      )}
     </div>
   );
 }
@@ -323,90 +372,75 @@ export default function KnowledgeRadar() {
 
   /* ---------------------------------------------------------------- */
 
+  const atRiskCount = cards.filter((c) => c.hasConcentrationRisk).length;
+  const contributorCount = new Set(
+    cards.flatMap((c) => c.people.map((p) => p.person.id))
+  ).size;
+
   return (
-    <div className="min-h-screen bg-surface-base">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Page header */}
-        <div className="mb-6 animate-fadeIn">
-          <h1 className="text-2xl font-semibold text-ink-primary">
-            Knowledge Radar
-          </h1>
-          <p className="mt-1 text-sm text-ink-secondary">
-            Knowledge distribution across components and contributors.
+    <PageContainer width="wide">
+      {/* Page Header */}
+      <PageHeader
+        stepNumber={2}
+        stepEyebrow="Reconstruct"
+        title="Knowledge Radar"
+        description="Component-level knowledge distribution and concentration risks across contributors."
+        metaChips={[
+          { label: "Components", value: cards.length },
+          { label: "At Risk", value: atRiskCount },
+          { label: "Contributors", value: contributorCount },
+        ]}
+      />
+
+      {/* Knowledge Concentration Risk Formula Banner */}
+      {!loading && !error && cards.length > 0 && (
+        <div className="mb-6 bg-surface-card border border-edge-default rounded-card p-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ink-secondary block">
+                Knowledge Concentration Risk Formula
+              </span>
+              <p className="text-xs font-mono font-semibold text-ink-primary mt-0.5">
+                Risk = Criticality × L × (1 − B) × (1 − 0.6 × D)
+              </p>
+              <p className="text-[11px] text-ink-secondary mt-0.5">
+                L = Leaver authorship share (time-decayed) · B = Bench strength (backup ratio) · D = Doc coverage (0–1)
+              </p>
+            </div>
+            <div className="sm:text-right">
+              <span className="inline-block text-xs font-mono font-bold text-ink-primary bg-surface-elevated border border-edge-strong px-2.5 py-1 rounded">
+                Max Leaver Share: {Math.max(...cards.flatMap((c) => c.people.filter((p) => p.person.is_leaver).map((p) => Math.round(p.score))), 0)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content area */}
+      {loading && <LoadingSkeleton />}
+      {error && <ErrorBanner message={error} onRetry={load} />}
+      {!loading && !error && cards.length === 0 && (
+        <div className="bg-surface-card border border-edge-default rounded-card p-8 text-center">
+          <p className="text-sm text-ink-secondary">
+            No component or knowledge data found for this case.
           </p>
         </div>
+      )}
 
-        {/* Summary strip */}
-        {!loading && !error && cards.length > 0 && (
-          <div className="mb-6 flex flex-wrap gap-4 animate-fadeIn">
-            <div className="bg-surface-card shadow-card rounded-card px-4 py-3">
-              <p className="text-xs text-ink-tertiary">Components</p>
-              <p className="text-lg font-semibold text-ink-primary tabular-nums">
-                {cards.length}
-              </p>
-            </div>
-            <div className="bg-surface-card shadow-card rounded-card px-4 py-3">
-              <p className="text-xs text-ink-tertiary">At Risk</p>
-              <p className="text-lg font-semibold text-ink-primary tabular-nums">
-                {cards.filter((c) => c.hasConcentrationRisk).length}
-              </p>
-            </div>
-            <div className="bg-surface-card shadow-card rounded-card px-4 py-3">
-              <p className="text-xs text-ink-tertiary">Contributors</p>
-              <p className="text-lg font-semibold text-ink-primary tabular-nums">
-                {
-                  new Set(
-                    cards.flatMap((c) => c.people.map((p) => p.person.id))
-                  ).size
-                }
-              </p>
-            </div>
-          </div>
-        )}
+      {!loading && !error && cards.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
+          {cards.map((card) => (
+            <ComponentCardView key={card.component.id} data={card} />
+          ))}
+        </div>
+      )}
 
-        {/* Knowledge Concentration Risk Formula Banner */}
-        {!loading && !error && cards.length > 0 && (
-          <div className="mb-6 bg-surface-card border border-edge-default rounded-card p-4 shadow-card animate-fadeIn">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-tertiary block">
-                  Knowledge Concentration Risk Formula
-                </span>
-                <p className="text-xs font-mono font-semibold text-ink-primary mt-0.5">
-                  Risk = Criticality × L × (1 − B) × (1 − 0.6 × D)
-                </p>
-                <p className="text-[11px] text-ink-tertiary mt-0.5">
-                  L = Leaver authorship share (time-decayed) · B = Bench strength (backup ratio) · D = Doc coverage (0–1)
-                </p>
-              </div>
-              <div className="sm:text-right">
-                <span className="inline-block text-xs font-mono font-bold text-ink-primary bg-surface-elevated border border-edge-strong px-2.5 py-1 rounded">
-                  Max Leaver Concentration: {Math.max(...cards.flatMap((c) => c.people.filter((p) => p.person.is_leaver).map((p) => Math.round(p.score))), 0)}%
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Content area */}
-        {loading && <LoadingSkeleton />}
-        {error && <ErrorBanner message={error} />}
-        {!loading && !error && cards.length === 0 && (
-          <div className="bg-surface-card shadow-card rounded-card p-8 text-center animate-fadeIn">
-            <p className="text-sm text-ink-tertiary">
-              No component or knowledge data found for this case.
-            </p>
-          </div>
-        )}
-
-        {!loading && !error && cards.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {cards.map((card) => (
-              <ComponentCardView key={card.component.id} data={card} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+      <NextStepFooter
+        nextLabel="Analyze Bus-Factor Risks"
+        nextUrl={`/cases/${caseId || "shopledger-priya"}/busfactor`}
+        currentStep={2}
+        totalSteps={5}
+      />
+    </PageContainer>
   );
 }

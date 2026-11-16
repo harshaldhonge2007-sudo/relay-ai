@@ -30,6 +30,28 @@
     <meta name="twitter:image"       content="https://PLACEHOLDER_CANONICAL_URL/og-image.svg" />
     <meta name="twitter:image:alt"   content="RELAY wordmark on a dark background" />
 
+    <!-- Theme initialization to prevent flash of wrong theme (FOUC) -->
+    <script>
+      (function() {
+        try {
+          var saved = localStorage.getItem('relay_theme');
+          var sidebarSaved = localStorage.getItem('relay_sidebar_theme');
+          var theme = saved || sidebarSaved;
+          if (!theme || (theme !== 'dark' && theme !== 'light')) {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', theme);
+          document.documentElement.setAttribute('data-sidebar-theme', theme);
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+          document.documentElement.style.colorScheme = theme;
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- Fonts — display=swap prevents invisible text during load -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

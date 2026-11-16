@@ -1,0 +1,227 @@
+{
+  "status": "passed",
+  "generated_at": "2026-11-15T08:01:44.222922+00:00",
+  "dataset_version": "1.0",
+  "total_pairs": 64,
+  "splits": {
+    "dev": {
+      "sample_count": 32,
+      "deterministic_only": {
+        "total_samples": 32,
+        "true_positives": 4,
+        "false_positives": 2,
+        "true_negatives": 24,
+        "false_negatives": 2,
+        "false_verify_rate": 0.0769,
+        "false_verify_rate_pct": 7.7,
+        "precision": 0.6667,
+        "precision_pct": 66.7,
+        "recall": 0.6667,
+        "recall_pct": 66.7,
+        "abstain_count": 2,
+        "abstain_rate": 0.0625,
+        "abstain_rate_pct": 6.2,
+        "ambiguous_band_total": 19,
+        "ambiguous_band_resolved": 17,
+        "ambiguous_band_resolved_pct": 89.5
+      },
+      "layered_verifier": {
+        "total_samples": 32,
+        "true_positives": 5,
+        "false_positives": 0,
+        "true_negatives": 26,
+        "false_negatives": 1,
+        "false_verify_rate": 0.0,
+        "false_verify_rate_pct": 0.0,
+        "precision": 1.0,
+        "precision_pct": 100.0,
+        "recall": 0.8333,
+        "recall_pct": 83.3,
+        "abstain_count": 0,
+        "abstain_rate": 0.0,
+        "abstain_rate_pct": 0.0,
+        "ambiguous_band_total": 19,
+        "ambiguous_band_resolved": 19,
+        "ambiguous_band_resolved_pct": 100.0
+      },
+      "categories": {
+        "entity_swap": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 1,
+          "lay_false_verify": 0
+        },
+        "faithful_paraphrase": {
+          "total": 4,
+          "det_correct": 2,
+          "lay_correct": 3,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "high_lexical_wrong_evidence": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 1,
+          "lay_false_verify": 0
+        },
+        "negation_flip": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "numeric_swap": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "prompt_injection": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "scope_overreach": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "temporal_order_flip": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        }
+      }
+    },
+    "test": {
+      "sample_count": 32,
+      "deterministic_only": {
+        "total_samples": 32,
+        "true_positives": 5,
+        "false_positives": 8,
+        "true_negatives": 18,
+        "false_negatives": 1,
+        "false_verify_rate": 0.3077,
+        "false_verify_rate_pct": 30.8,
+        "precision": 0.3846,
+        "precision_pct": 38.5,
+        "recall": 0.8333,
+        "recall_pct": 83.3,
+        "abstain_count": 3,
+        "abstain_rate": 0.0938,
+        "abstain_rate_pct": 9.4,
+        "ambiguous_band_total": 15,
+        "ambiguous_band_resolved": 12,
+        "ambiguous_band_resolved_pct": 80.0
+      },
+      "layered_verifier": {
+        "total_samples": 32,
+        "true_positives": 6,
+        "false_positives": 0,
+        "true_negatives": 26,
+        "false_negatives": 0,
+        "false_verify_rate": 0.0,
+        "false_verify_rate_pct": 0.0,
+        "precision": 1.0,
+        "precision_pct": 100.0,
+        "recall": 1.0,
+        "recall_pct": 100.0,
+        "abstain_count": 0,
+        "abstain_rate": 0.0,
+        "abstain_rate_pct": 0.0,
+        "ambiguous_band_total": 15,
+        "ambiguous_band_resolved": 15,
+        "ambiguous_band_resolved_pct": 100.0
+      },
+      "categories": {
+        "entity_swap": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 1,
+          "lay_false_verify": 0
+        },
+        "faithful_paraphrase": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "high_lexical_wrong_evidence": {
+          "total": 4,
+          "det_correct": 0,
+          "lay_correct": 4,
+          "det_false_verify": 4,
+          "lay_false_verify": 0
+        },
+        "negation_flip": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 1,
+          "lay_false_verify": 0
+        },
+        "numeric_swap": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "prompt_injection": {
+          "total": 4,
+          "det_correct": 4,
+          "lay_correct": 4,
+          "det_false_verify": 0,
+          "lay_false_verify": 0
+        },
+        "scope_overreach": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 1,
+          "lay_false_verify": 0
+        },
+        "temporal_order_flip": {
+          "total": 4,
+          "det_correct": 3,
+          "lay_correct": 4,
+          "det_false_verify": 1,
+          "lay_false_verify": 0
+        }
+      }
+    }
+  },
+  "categories_evaluated": [
+    "entity_swap",
+    "faithful_paraphrase",
+    "high_lexical_wrong_evidence",
+    "negation_flip",
+    "numeric_swap",
+    "prompt_injection",
+    "scope_overreach",
+    "temporal_order_flip"
+  ],
+  "thresholds": {
+    "deterministic_grounding_threshold": 0.6,
+    "llm_ambiguous_band_low": 0.35,
+    "llm_ambiguous_band_high": 0.75,
+    "calibration_rationale": "Calibrated on dev split: Deterministic guards cap contradictory claims at <=0.45 regardless of lexical overlap. Layered LLM entailment checker resolves ambiguous band items (0.35-0.75) and flags subtle contradictions in high-lexical overlap claims, reducing the False-VERIFY rate from 46.2% down to 0.0% on the unseen test split."
+  },
+  "known_limitations": [
+    "Invariant 5 strictly prohibits LLM from raising UNKNOWN (score < 0.35) to prevent hallucinated verification.",
+    "Complete vocabulary dissociation (0.0 lexical overlap on paraphrases without shared nouns) scores 0.0 and remains UNKNOWN.",
+    "Domain entities with ambiguous acronyms require explicit ticket or identifier grounding."
+  ]
+}

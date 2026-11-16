@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: ['class', '[data-theme="dark"]'],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -19,23 +20,52 @@ module.exports = {
         ],
       },
       colors: {
+        neutral: {
+          white: 'var(--neutral-white, #FFFFFF)',
+          50: 'var(--neutral-50, #FAFAFA)',
+          100: 'var(--neutral-100, #F4F4F4)',
+          200: 'var(--neutral-200, #EAEAEA)',
+          300: 'var(--neutral-300, #D9D9D9)',
+          400: 'var(--neutral-400, #BBBBBB)',
+          500: 'var(--neutral-500, #888888)',
+          600: 'var(--neutral-600, #555555)',
+          700: 'var(--neutral-700, #333333)',
+          800: 'var(--neutral-800, #1C1C1C)',
+          900: 'var(--neutral-900, #111111)',
+        },
         surface: {
-          base: '#FAFAFA',
-          card: '#FFFFFF',
-          elevated: '#F5F5F5',
-          overlay: 'rgba(0,0,0,0.5)',
+          base: 'var(--bg-base, #FAFAFA)',
+          card: 'var(--surface-card, #FFFFFF)',
+          elevated: 'var(--surface-elevated, #F4F4F4)',
+          recessed: 'var(--surface-recessed, #F4F4F4)',
+          sidebar: 'var(--surface-sidebar, #F4F4F4)',
+          overlay: 'var(--surface-overlay, rgba(0,0,0,0.5))',
         },
         ink: {
-          primary: '#111111',
-          secondary: '#555555',
-          tertiary: '#888888',
-          disabled: '#BBBBBB',
+          primary: 'var(--ink-primary, #111111)',
+          secondary: 'var(--ink-secondary, #555555)',
+          tertiary: 'var(--ink-tertiary, #888888)',
+          muted: 'var(--ink-muted, #555555)',
+          disabled: 'var(--ink-disabled, #888888)',
         },
         edge: {
-          default: '#E5E5E5',
-          strong: '#CCCCCC',
-          subtle: '#F0F0F0',
+          default: 'var(--edge-default, #EAEAEA)',
+          strong: 'var(--edge-strong, #D9D9D9)',
+          subtle: 'var(--edge-subtle, #F4F4F4)',
+          dark: 'var(--edge-dark, #333333)',
         },
+        btn: {
+          primary: 'var(--btn-primary-bg, #111111)',
+          'primary-text': 'var(--btn-primary-text, #FFFFFF)',
+          secondary: 'var(--btn-secondary-bg, #FFFFFF)',
+          'secondary-text': 'var(--btn-secondary-text, #111111)',
+        },
+      },
+      maxWidth: {
+        reading: '760px',
+        standard: '1120px',
+        wide: '1360px',
+        shell: '1760px',
       },
       borderRadius: {
         card: '16px',

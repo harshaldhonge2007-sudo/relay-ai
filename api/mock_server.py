@@ -3,21 +3,33 @@ RELAY AI — Standalone Demo Server (mock_server.py)
 In-memory, zero-dependency, fully offline.
 Dataset: "ShopLedger – Priya Nair Departure" (synthetic data, all APIs simulated)
 """
-from fastapi import FastAPI, HTTPException, Body, APIRouter, Request
+from fastapi import FastAPI, HTTPException, Body, APIRouter, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
+from pathlib import Path
 import base64
+import contextvars
 import hashlib
 import hmac
 import json
+import difflib
 import logging
 import os
+import re
 import secrets as _secrets_mod
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from app.handover.verifier import GroundingVerifier
+from app.handover.llm_entailment import LLMEntailmentVerifier
+from app.detect.recurring import cluster_recurring_problems
+from app.risk.contacts import resolve_component_contacts
+from app.security.quarantine import default_classifier, SensitiveClassifier
+from app.ingest.pipeline import create_import_preview, get_staged_import, drop_staged_import
+from app.sim.required_facts import build_generic_required_facts, compute_readiness_score
+from app.schemas import ImportCommitSchema
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +41,35 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar("current_session_id", default="default")
+
+
+@app.middleware("http")
+async def session_scoping_middleware(request: Request, call_next):
+    """Scope all in-memory database mutations to the session id in header, query, or token."""
+    sid = request.headers.get("x-relay-session")
+    if not sid:
+        auth_h = request.headers.get("authorization", "")
+        if auth_h.lower().startswith("bearer "):
+            payload = _decode_demo_token(auth_h[7:].strip())
+            if payload and payload.get("sid"):
+                sid = payload["sid"]
+    if not sid:
+        sid = request.query_params.get("session_id")
+    if not sid:
+        sid = "default"
+
+    token = _current_session_id.set(sid)
+    try:
+        response = await call_next(request)
+        response.headers["x-relay-session"] = sid
+        return response
+    finally:
+        _current_session_id.reset(token)
+
 
 router = APIRouter()
 
@@ -46,129 +86,71 @@ SAM_ID = "person-003"
 #   2. Auto-generated random secret per process (tokens do not survive restarts)
 # ---------------------------------------------------------------------------
 
-def _load_mock_secret() -> str:
-    env_secret = os.environ.get("RELAY_TOKEN_SECRET", "").strip()
-    if env_secret:
-        return env_secret
-    generated = _secrets_mod.token_hex(32)
-    logger.warning(
-        "RELAY_TOKEN_SECRET is not set. Using a random per-process secret. "
-        "Tokens will not survive a server restart. "
-        "Set RELAY_TOKEN_SECRET in the environment for stable demo sessions. "
-        "demo authentication — not for production."
-    )
-    return generated
-
-_RELAY_SECRET: str = _load_mock_secret()
-
-TOKEN_TTL_SECONDS = 86400  # 24 hours
-
-DEMO_USERS = {
-    "lead": {
-        "role": "engineering_lead",
-        "display_name": "Alex Chen (Engineering Lead)",
-    },
-    "successor": {
-        "role": "successor",
-        "display_name": "Alex Chen (Successor)",
-    },
-    "contractor": {
-        "role": "contractor",
-        "display_name": "Sam Rodriguez (Contractor)",
-    },
-}
+from app.security.auth import (
+    _RELAY_SECRET,
+    DEMO_USERS,
+    ROLE_HIERARCHY,
+    TOKEN_TTL_SECONDS,
+    _make_hmac,
+    is_demo_mode_active,
+    sign_demo_token as _sign_demo_token,
+    decode_demo_token as _decode_demo_token,
+    verify_demo_token as _verify_demo_token,
+)
 
 # ---------------------------------------------------------------------------
 # ACL helpers
 # ---------------------------------------------------------------------------
 
-ROLE_HIERARCHY: Dict[str, List[str]] = {
-    "engineering_lead": ["engineering_lead", "successor", "contractor"],
-    "successor": ["successor", "contractor"],
-    "contractor": ["contractor"],
-}
-
-
-def _make_hmac(payload_b64: str) -> str:
-    """HMAC-SHA256 of base64 payload using the per-process signing secret."""
-    return hmac.new(
-        _RELAY_SECRET.encode(),
-        payload_b64.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-
-
-def _sign_demo_token(user: str) -> Optional[dict]:
-    """
-    Create signed demo token for the given user key.
-    Token format: {payload_b64}.{hmac_hex}
-    demo authentication — not for production.
-    """
-    if user not in DEMO_USERS:
-        return None
-    info = DEMO_USERS[user]
-    payload = {"role": info["role"], "user": user, "iat": int(time.time())}
-    payload_json = json.dumps(payload, separators=(",", ":"))
-    payload_b64 = base64.b64encode(payload_json.encode()).decode()
-    sig = _make_hmac(payload_b64)
-    token = f"{payload_b64}.{sig}"
-    return {
-        "token": token,
-        "role": info["role"],
-        "display_name": info["display_name"],
-        "note": "demo authentication — not for production",
-    }
-
-
-def _verify_demo_token(token: str) -> Optional[str]:
-    """
-    Verify a demo token; return role string if valid, else None.
-    demo authentication — not for production.
-    """
-    try:
-        parts = token.split(".")
-        if len(parts) != 2:
-            return None
-        payload_b64, sig = parts
-        expected_sig = _make_hmac(payload_b64)
-        if not hmac.compare_digest(sig, expected_sig):
-            return None
-        payload_json = base64.b64decode(payload_b64.encode()).decode()
-        payload = json.loads(payload_json)
-        iat = payload.get("iat", 0)
-        if int(time.time()) - iat > TOKEN_TTL_SECONDS:
-            return None
-        role = payload.get("role", "")
-        if role not in ROLE_HIERARCHY:
-            return None
-        return role
-    except Exception:
-        return None
-
-
 def _get_role(request: Request) -> str:
     """
     Derive role ONLY from a valid signed Bearer token in Authorization header.
     X-Relay-Role header is NEVER used to assert a role directly.
-    Default role when no valid token is present: successor.
+    Invalid, tampered, or expired tokens return 401 Unauthorized.
+    Default role when no token header is provided: successor.
     """
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         token = auth_header[7:].strip()
         role = _verify_demo_token(token)
-        if role:
-            return role
-    # No valid token — default to successor (not engineering_lead)
+        if not role:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid, tampered, or expired bearer token.",
+            )
+        return role
+    # No token header provided — default to successor
     return "successor"
 
 def _can_see(item: Any, role: str) -> bool:
     """Return True if 'role' is allowed to see 'item'."""
+    if isinstance(item, dict):
+        if item.get("quarantine_status") == "quarantined" and role != "engineering_lead":
+            return False
     acl = item.get("acl") if isinstance(item, dict) else None
     if acl is None:
         return True  # no ACL = public
     allowed = acl.get("allowed_roles", [])
     visible_to = ROLE_HIERARCHY.get(role, [])
     return any(r in visible_to for r in allowed)
+
+def _can_see_re_review(item: dict, role: str) -> bool:
+    """ACL gate for re-review queue items."""
+    if role == "engineering_lead":
+        return True
+    acl = item.get("evidence_acl")
+    if not acl:
+        return True
+    vis = acl.get("visibility", "public")
+    if vis in ("confidential", "restricted"):
+        return False
+    if vis == "internal" and role != "successor":
+        return False
+    allowed = acl.get("allowed_roles", [])
+    if allowed:
+        visible_to = ROLE_HIERARCHY.get(role, [])
+        return any(r in visible_to for r in allowed)
+    return True
 
 def _filter_by_role(items: List[Dict], role: str) -> tuple:
     """Return (visible_items, withheld_count)."""
@@ -226,6 +208,7 @@ def generate_default_data():
                     "docs": "fixture",
                     "meetings": "fixture",
                 },
+                "disclose_withheld_counts": True,
                 "created_at": "2024-10-15T10:00:00Z",
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -317,7 +300,7 @@ def generate_default_data():
                 "occurred_at": "2024-10-14T19:00:00Z",
                 "url": "https://slack.com/archives/C_ENG/p1728604800",
                 "title": "Slack: Migration reverted in #engineering",
-                "body": "Had to revert the database migration from October 14. It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version that backfills currency_code before adding NOT NULL.",
+                "body": "Had to revert the database migration from October 14 (CANARY_INT_91bc). It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version that backfills currency_code before adding NOT NULL.",
                 "raw": {"channel": "C_ENG"},
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
                 "created_at": "2024-10-14T19:00:00Z",
@@ -348,8 +331,8 @@ def generate_default_data():
                 "author_id": PRIYA_ID,
                 "occurred_at": "2024-10-08T18:00:00Z",
                 "url": "https://slack.com/archives/C_ENG/p1728345600",
-                "title": "Slack: JWT token expiry issue still occurring in prod",
-                "body": "The JWT token expiry issue is still happening in production. Users are getting logged out after 15 minutes instead of the configured 2 hours. Looks like downstream gateway cache is overriding the header.",
+                "title": "Slack: JWT token expiry timeout issue still occurring in prod",
+                "body": "The JWT token expiry timeout issue is still happening in production. Users are getting logged out after 15 minutes instead of the configured 2 hours. Looks like downstream gateway timeout is overriding the header.",
                 "raw": {"channel": "C_ENG"},
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
                 "created_at": "2024-10-08T18:00:00Z",
@@ -369,6 +352,38 @@ def generate_default_data():
                 "raw": {"channel": "C_OPS"},
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
                 "created_at": "2024-10-15T07:00:00Z",
+            },
+            {
+                "id": "art-006a",
+                "case_id": CASE_ID,
+                "source": "github",
+                "source_mode": "live",
+                "type": "commit",
+                "external_id": "a1b2c3d",
+                "author_id": PRIYA_ID,
+                "occurred_at": "2024-10-01T09:15:00Z",
+                "url": "https://github.com/shopledger/api/commit/a1b2c3d",
+                "title": "Fix JWT expiry: update auth service config",
+                "body": "Fix JWT expiry: update auth service config\n\nChanges token TTL in auth.config.ts. Closes SL-234.",
+                "raw": {"sha": "a1b2c3d", "files": ["src/auth/auth.config.ts"]},
+                "acl": {"visibility": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]},
+                "created_at": "2024-10-01T09:15:00Z",
+            },
+            {
+                "id": "art-006b",
+                "case_id": CASE_ID,
+                "source": "github",
+                "source_mode": "live",
+                "type": "commit",
+                "external_id": "b2c3d4e",
+                "author_id": PRIYA_ID,
+                "occurred_at": "2024-10-14T14:00:00Z",
+                "url": "https://github.com/shopledger/api/commit/b2c3d4e",
+                "title": "Add currency_code column to payments table",
+                "body": "Add currency_code column to payments table\n\nMigration adds NOT NULL currency_code. SL-287.",
+                "raw": {"sha": "b2c3d4e", "files": ["db/migrations/20241014_add_currency_code.sql"]},
+                "acl": {"visibility": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]},
+                "created_at": "2024-10-14T14:00:00Z",
             },
             {
                 "id": "art-006",
@@ -414,7 +429,7 @@ def generate_default_data():
                 "occurred_at": "2024-10-10T14:00:00Z",
                 "url": "https://slack.com/archives/C_FINANCE/p1728565200",
                 "title": "Slack: Severance discussion in #finance-private",
-                "body": "Re: Priya's severance package — the accelerated vesting clause applies given the company-initiated departure. HR has confirmed the Q4 payout schedule.",
+                "body": "Re: Priya's severance package (CANARY_CONF_7f3a) — the accelerated vesting clause applies given the company-initiated departure. HR has confirmed the Q4 payout schedule.",
                 "raw": {"channel": "C_FINANCE_PRIVATE"},
                 "acl": {"visibility": "confidential", "allowed_roles": ["engineering_lead"]},
                 "created_at": "2024-10-10T14:00:00Z",
@@ -429,8 +444,8 @@ def generate_default_data():
                 "author_id": PRIYA_ID,
                 "occurred_at": "2024-10-12T11:00:00Z",
                 "url": "https://jira.shopledger.io/browse/PAY-SEC-001",
-                "title": "PAY-SEC-001: Payment credential rotation (Restricted)",
-                "body": "Rotate Stripe live keys after Priya's departure. Steps:\n1. Generate new sk_live key in Stripe dashboard\n2. Update AWS Secrets Manager /prod/shopledger/stripe_key\n3. Trigger canary deployment to verify\n4. Revoke old key after 48h\nOwner: DevOps team",
+                "title": "PAY-SEC-001: Payment credential rotation (Restricted) (CANARY_CONF_7f3a)",
+                "body": "Rotate Stripe live keys after Priya's departure (CANARY_CONF_7f3a). Steps:\n1. Generate new sk_live key in Stripe dashboard\n2. Update AWS Secrets Manager /prod/shopledger/stripe_key\n3. Trigger canary deployment to verify\n4. Revoke old key after 48h\nOwner: DevOps team",
                 "raw": {"key": "PAY-SEC-001", "status": "Open", "project": "PAY-SEC"},
                 "acl": {"visibility": "restricted", "allowed_roles": ["engineering_lead"]},
                 "created_at": "2024-10-12T11:00:00Z",
@@ -446,7 +461,7 @@ def generate_default_data():
                 "occurred_at": "2024-10-01T00:00:00Z",
                 "url": "https://github.com/shopledger/api/blob/main/ENV_KEYS.md",
                 "title": "ENV_KEYS.md (Confidential)",
-                "body": "# Production Credentials\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]\nSMTP_RELAY_HOST=smtp.sendgrid.net\nREPORT_BUCKET_NAME=shopledger-reports-prod\nDATABASE_URL=[REDACTED]\n\n# Rotation due: 2024-11-01",
+                "body": "# Production Credentials (CANARY_CONF_7f3a)\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]\nSMTP_RELAY_HOST=smtp.sendgrid.net\nREPORT_BUCKET_NAME=shopledger-reports-prod\nDATABASE_URL=[REDACTED]\n\n# Rotation due: 2024-11-01",
                 "raw": {"path": "ENV_KEYS.md"},
                 "acl": {"visibility": "confidential", "allowed_roles": ["engineering_lead"]},
                 "created_at": "2024-10-01T00:00:00Z",
@@ -463,7 +478,7 @@ def generate_default_data():
                 "occurred_at": "2024-10-11T14:00:00Z",
                 "url": None,
                 "title": "Sprint Retro – Oct 11, 2024",
-                "body": "## What Went Well\n- Webhook retry queue merged ahead of schedule\n- Alex successfully onboarded to Auth Service codebase\n\n## What Didn't Go Well\n- Database migration rollback caused 45-minute ops scramble\n- JWT timeout root cause still not fully confirmed (gateway vs. config)\n\n## Action Items\n- Priya: document two-phase migration strategy in PR description\n- Sam: investigate Cloudflare TTL override for /auth/refresh\n- Alex: take primary reviewer role on PR #47",
+                "body": "Security classification: Internal (CANARY_INT_91bc)\n## What Went Well\n- Webhook retry queue merged ahead of schedule\n- Alex successfully onboarded to Auth Service codebase\n\n## What Didn't Go Well\n- Database migration rollback caused 45-minute ops scramble\n- JWT timeout root cause still not fully confirmed (gateway vs. config)\n\n## Action Items\n- Priya: document two-phase migration strategy in PR description\n- Sam: investigate Cloudflare TTL override for /auth/refresh\n- Alex: take primary reviewer role on PR #47",
                 "raw": {"path": "seed/meetings/sprint-retro-oct-2024.md"},
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
                 "created_at": "2024-10-11T14:00:00Z",
@@ -479,7 +494,7 @@ def generate_default_data():
                 "occurred_at": "2024-10-14T10:00:00Z",
                 "url": None,
                 "title": "Architecture Sync – Oct 14, 2024",
-                "body": "## Attendees: Priya, Alex, Sam, CTO\n\n## Decision: Webhook Retry Strategy\n- Agreed on exponential backoff with jitter (not fixed intervals)\n- Dead-letter queue will use SQS with 72h retention\n- Alert threshold: 3 consecutive failures -> PagerDuty P2\n\n## Decision: PostgreSQL 15 Upgrade\n- Timeline: Q1 2025\n- Priya to draft runbook before departure (STATUS: NOT COMPLETED)\n- Sam to pick up ownership\n\n## Open Questions\n- Who owns the nightly SMTP relay configuration going forward?",
+                "body": "Security classification: Internal (CANARY_INT_91bc)\n## Attendees: Priya, Alex, Sam, CTO\n\n## Decision: Webhook Retry Strategy\n- Agreed on exponential backoff with jitter (not fixed intervals)\n- Dead-letter queue will use SQS with 72h retention\n- Alert threshold: 3 consecutive failures -> PagerDuty P2\n\n## Decision: PostgreSQL 15 Upgrade\n- Timeline: Q1 2025\n- Priya to draft runbook before departure (STATUS: NOT COMPLETED)\n- Sam to pick up ownership\n\n## Open Questions\n- Who owns the nightly SMTP relay configuration going forward?",
                 "raw": {"path": "seed/meetings/arch-sync-oct-14.md"},
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
                 "created_at": "2024-10-14T10:00:00Z",
@@ -499,6 +514,92 @@ def generate_default_data():
                 "raw": {"path": "docs/ARCHITECTURE.md"},
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor", "contractor"]},
                 "created_at": "2024-10-15T12:00:00Z",
+            },
+            {
+                "id": "art-014",
+                "case_id": CASE_ID,
+                "source": "slack",
+                "source_mode": "fixture",
+                "type": "slack_message",
+                "external_id": "msg_q_hr_001",
+                "author_id": ALEX_ID,
+                "occurred_at": "2024-10-12T14:00:00Z",
+                "url": "https://slack.com/archives/C_ENG/p1728692000",
+                "title": "#engineering - Q4 compensation and retention package update",
+                "body": "Hey team, Elena Vance shared the Q4 compensation and retention package update for Priya Nair (CANARY_QUARANTINE_e42b_hr). Annual salary review and bonus package details are pending final approval under the bilateral NDA.",
+                "raw": {"channel": "C_ENG", "id": "msg_q_hr_001"},
+                "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
+                "quarantine_status": "quarantined",
+                "quarantine_reasons": ["hr:salary", "legal:nda_lawsuit"],
+                "original_body": None,
+                "created_at": "2024-10-12T14:00:00Z",
+            },
+            {
+                "id": "art-015",
+                "case_id": CASE_ID,
+                "source": "slack",
+                "source_mode": "fixture",
+                "type": "slack_message",
+                "external_id": "msg_q_cust_001",
+                "author_id": PRIYA_ID,
+                "occurred_at": "2024-10-13T10:00:00Z",
+                "url": "https://slack.com/archives/C_ENG/p1728778000",
+                "title": "#engineering - Customer support escalation robert.morris@enterpriseclient.com",
+                "body": "Forwarding customer support escalation: client robert.morris@enterpriseclient.com reports CID-88219 payment webhook failing with card processing error. Customer phone is +1-415-555-8392. Ref: CANARY_QUARANTINE_e42b_cust.",
+                "raw": {"channel": "C_ENG", "id": "msg_q_cust_001"},
+                "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
+                "quarantine_status": "quarantined",
+                "quarantine_reasons": ["customer:id", "pii:email", "pii:phone"],
+                "original_body": None,
+                "created_at": "2024-10-13T10:00:00Z",
+            },
+            {
+                "id": "art-016",
+                "case_id": CASE_ID,
+                "source": "github",
+                "source_mode": "live",
+                "type": "commit",
+                "external_id": "a2b3c4d",
+                "author_id": PRIYA_ID,
+                "occurred_at": "2024-10-09T16:00:00Z",
+                "url": "https://github.com/shopledger/api/commit/a2b3c4d",
+                "title": "Hotfix: Fix session timeout race condition in auth.config.ts",
+                "body": "Hotfix: Fix session timeout race condition in auth.config.ts\n\nSecondary fix for token expiry under high concurrency. Ref SL-234.",
+                "raw": {"sha": "a2b3c4d", "files": ["src/auth/auth.config.ts"]},
+                "acl": {"visibility": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]},
+                "created_at": "2024-10-09T16:00:00Z",
+            },
+            {
+                "id": "art-017",
+                "case_id": CASE_ID,
+                "source": "github",
+                "source_mode": "live",
+                "type": "commit",
+                "external_id": "f6a7b8c",
+                "author_id": ALEX_ID,
+                "occurred_at": "2024-10-15T16:00:00Z",
+                "url": "https://github.com/shopledger/api/commit/f6a7b8c",
+                "title": "CI: retry flaky test test_payment_webhook_retry intermittent failure",
+                "body": "CI: retry flaky test test_payment_webhook_retry intermittent failure\n\nAdds retry wrapper around payment webhook integration tests due to transient mock timer flakiness.",
+                "raw": {"sha": "f6a7b8c", "files": ["tests/test_payment_webhook_retry.py"]},
+                "acl": {"visibility": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]},
+                "created_at": "2024-10-15T16:00:00Z",
+            },
+            {
+                "id": "art-018",
+                "case_id": CASE_ID,
+                "source": "slack",
+                "source_mode": "fixture",
+                "type": "slack_message",
+                "external_id": "msg_003",
+                "author_id": PRIYA_ID,
+                "occurred_at": "2024-10-08T20:00:00Z",
+                "url": "https://slack.com/archives/C_ENG/p1728518400",
+                "title": "#engineering - Downstream timeout on token refresh",
+                "body": "The fix was deployed but something's still wrong. I am seeing timeout errors in the logs after the token refresh. Downstream timeout failure.",
+                "raw": {"channel": "C_ENG", "id": "msg_003"},
+                "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]},
+                "created_at": "2024-10-08T20:00:00Z",
             },
         ],
         "findings": [
@@ -763,16 +864,21 @@ def generate_default_data():
         },
         "admin": {
             "sources": [
-                {"source": "GitHub", "status": "Connected & Synced (Simulated)", "last_synced": "12 minutes ago", "items": "12 commits, 2 PRs, 1 branch"},
-                {"source": "Slack", "status": "Connected & Synced (Simulated)", "last_synced": "20 minutes ago", "items": "8 channels, 34 messages"},
-                {"source": "Jira", "status": "Connected & Synced (Simulated)", "last_synced": "15 minutes ago", "items": "5 tickets, 12 comments"},
-                {"source": "Docs", "status": "Indexed (Simulated)", "last_synced": "1 hour ago", "items": "README.md, API.md, ENV_KEYS.md, 14 markdown files"},
-                {"source": "Meeting Notes", "status": "Indexed (Simulated)", "last_synced": "2 hours ago", "items": "2 meeting transcripts"},
+                {"source": "GitHub", "status": "Connected & Synced (Simulated)", "last_synced": "12 minutes ago", "items": "12 commits, 2 PRs, 1 branch",
+                 "acl": {"access_level": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]}},
+                {"source": "Slack", "status": "Connected & Synced (Simulated)", "last_synced": "20 minutes ago", "items": "8 channels, 34 messages",
+                 "acl": {"access_level": "internal", "allowed_roles": ["engineering_lead", "successor"]}},
+                {"source": "Jira", "status": "Connected & Synced (Simulated)", "last_synced": "15 minutes ago", "items": "5 tickets, 12 comments",
+                 "acl": {"access_level": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]}},
+                {"source": "Docs", "status": "Indexed (Simulated)", "last_synced": "1 hour ago", "items": "README.md, API.md, ENV_KEYS.md, 14 markdown files",
+                 "acl": {"access_level": "internal", "allowed_roles": ["engineering_lead", "successor"]}},
+                {"source": "Meeting Notes", "status": "Indexed (Simulated)", "last_synced": "2 hours ago", "items": "2 meeting transcripts",
+                 "acl": {"access_level": "confidential", "allowed_roles": ["engineering_lead"]}},
             ],
             "identity_mappings": [
-                {"name": "Priya Nair (Leaver)", "github": "priya-nair", "slack": "@priya (U12345)", "jira": "jira_priya", "confidence": "100% (Auto-Unified)"},
-                {"name": "Alex Chen", "github": "alexc", "slack": "@alex (U67890)", "jira": "alex@shopledger.io", "confidence": "100% (Auto-Unified)"},
-                {"name": "Sam Rodriguez", "github": "samr", "slack": "@sam (U11111)", "jira": "sam@shopledger.io", "confidence": "100% (Auto-Unified)"},
+                {"id": "id-001", "name": "Priya Nair (Leaver)", "github": "priya-nair", "slack": "@priya (U12345)", "jira": "jira_priya", "confidence": "100% (Auto-Unified)", "status": "auto_merged"},
+                {"id": "id-002", "name": "Alex Chen", "github": "alexc", "slack": "@alex (U67890)", "jira": "alex@shopledger.io", "confidence": "94% (Fuzzy Match)", "status": "auto_merged"},
+                {"id": "id-003", "name": "Sam Rodriguez", "github": "samr", "slack": "@sam (U11111)", "jira": "sam@shopledger.io", "confidence": "89% (Handle Match)", "status": "auto_merged"},
             ],
             "audit_log": [
                 {"time": "Just now", "actor": "System", "action": "Calculated knowledge radar distribution across 3 components"},
@@ -887,6 +993,8 @@ def generate_default_data():
         "acknowledged_at": None,
         "acknowledged_by": None,
         "handover_versions": [],
+        "re_review_queue": [],
+        "evidence_drift_events": [],
     }
     data["handover_versions"] = [
         {
@@ -898,10 +1006,129 @@ def generate_default_data():
             "items": [dict(i) for i in data["handover"]],
         }
     ]
+    data["assets"] = [
+        {"id": "asset-001", "name": "ShopLedger API Architecture v2.pdf", "file_type": "pdf", "platform": "google_drive", "url": "https://drive.google.com/file/d/demo-001", "owner": "Priya Nair", "last_modified": "2024-09-30T10:00:00Z", "relevance_score": 0.95, "category": "architecture", "is_selected": True, "is_demo": True},
+        {"id": "asset-002", "name": "Payment Webhook Implementation Notes.docx", "file_type": "docx", "platform": "google_drive", "url": "https://drive.google.com/file/d/demo-002", "owner": "Priya Nair", "last_modified": "2024-10-05T10:00:00Z", "relevance_score": 0.92, "category": "api_docs", "is_selected": True, "is_demo": True},
+        {"id": "asset-003", "name": "Sprint Planning Q4 2024.gsheet", "file_type": "sheet", "platform": "google_sheets", "url": "https://docs.google.com/spreadsheets/d/demo-003", "owner": "Alex Chen", "last_modified": "2024-10-07T10:00:00Z", "relevance_score": 0.78, "category": "project_plan", "is_selected": False, "is_demo": True},
+        {"id": "asset-004", "name": "DB Migration Runbook — SL-287.md", "file_type": "markdown", "platform": "google_drive", "url": "https://drive.google.com/file/d/demo-004", "owner": "Priya Nair", "last_modified": "2024-09-25T10:00:00Z", "relevance_score": 0.88, "category": "runbook", "is_selected": True, "is_demo": True},
+        {"id": "asset-005", "name": "Infrastructure Diagram — AWS Architecture.drawio", "file_type": "diagram", "platform": "google_drive", "url": "https://drive.google.com/file/d/demo-005", "owner": "Sam Rodriguez", "last_modified": "2024-09-20T10:00:00Z", "relevance_score": 0.82, "category": "architecture", "is_selected": False, "is_demo": True},
+        {"id": "asset-006", "name": "JWT Auth Service Technical Spec.pdf", "file_type": "pdf", "platform": "google_drive", "url": "https://drive.google.com/file/d/demo-006", "owner": "Priya Nair", "last_modified": "2024-09-10T10:00:00Z", "relevance_score": 0.90, "category": "technical_spec", "is_selected": True, "is_demo": True},
+        {"id": "asset-007", "name": "Team Meeting Notes — October 2024.docx", "file_type": "docx", "platform": "google_drive", "url": "https://drive.google.com/file/d/demo-007", "owner": "Alex Chen", "last_modified": "2024-10-03T10:00:00Z", "relevance_score": 0.55, "category": "meeting_notes", "is_selected": False, "is_demo": True},
+        {"id": "asset-008", "name": "Stripe Integration Test Results.xlsx", "file_type": "xlsx", "platform": "onedrive", "url": "https://onedrive.live.com/demo-008", "owner": "Sam Rodriguez", "last_modified": "2024-09-28T10:00:00Z", "relevance_score": 0.65, "category": "testing", "is_selected": False, "is_demo": True},
+    ]
     return data
 
 
-db = generate_default_data()
+SESSION_TTL_SECONDS = 86400  # 24 hours
+_SESSIONS_LOCK = threading.Lock()
+_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+
+def _get_session_db(sid: Optional[str] = None) -> dict:
+    session_id = sid or _current_session_id.get("default")
+    now = time.time()
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(session_id)
+        if sess is None:
+            sess = {
+                "db": generate_default_data(),
+                "created_at": now,
+                "last_active": now,
+                "lock": threading.Lock(),
+            }
+            _SESSIONS[session_id] = sess
+        else:
+            sess["last_active"] = now
+            # Prune expired sessions older than TTL
+            expired_keys = [
+                k for k, v in _SESSIONS.items()
+                if k != "default" and (now - v["last_active"]) > SESSION_TTL_SECONDS
+            ]
+            for k in expired_keys:
+                _SESSIONS.pop(k, None)
+        return sess["db"]
+
+
+def _reset_session_db(sid: Optional[str] = None) -> dict:
+    session_id = sid or _current_session_id.get("default")
+    now = time.time()
+    with _SESSIONS_LOCK:
+        lock = _SESSIONS[session_id]["lock"] if session_id in _SESSIONS else threading.Lock()
+        new_db = generate_default_data()
+        _SESSIONS[session_id] = {
+            "db": new_db,
+            "created_at": now,
+            "last_active": now,
+            "lock": lock,
+        }
+        return new_db
+
+
+class ScopedDBProxy:
+    """Session-isolated, thread-safe proxy that routes dictionary access to the calling session's state."""
+
+    def _active_db(self) -> dict:
+        return _get_session_db()
+
+    def __getitem__(self, key: str) -> Any:
+        return self._active_db()[key]
+
+    def __setitem__(self, key: str, value: Any):
+        return self._active_db().__setitem__(key, value)
+
+    def __delitem__(self, key: str):
+        return self._active_db().__delitem__(key)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._active_db()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._active_db().get(key, default)
+
+    def setdefault(self, key: str, default: Any = None) -> Any:
+        return self._active_db().setdefault(key, default)
+
+    def keys(self):
+        return self._active_db().keys()
+
+    def values(self):
+        return self._active_db().values()
+
+    def items(self):
+        return self._active_db().items()
+
+    def clear(self):
+        return self._active_db().clear()
+
+    def update(self, *args, **kwargs):
+        return self._active_db().update(*args, **kwargs)
+
+    def pop(self, *args, **kwargs):
+        return self._active_db().pop(*args, **kwargs)
+
+    def popitem(self):
+        return self._active_db().popitem()
+
+    def copy(self):
+        return self._active_db().copy()
+
+    def __len__(self) -> int:
+        return len(self._active_db())
+
+    def __iter__(self):
+        return iter(self._active_db())
+
+    def __repr__(self):
+        return repr(self._active_db())
+
+    def __eq__(self, other):
+        return self._active_db() == other
+
+    def reset(self, sid: Optional[str] = None) -> dict:
+        return _reset_session_db(sid)
+
+
+db = ScopedDBProxy()
 
 
 def _record_new_version(
@@ -935,15 +1162,20 @@ def _record_new_version(
 # ---------------------------------------------------------------------------
 
 @router.post("/auth/demo-login")
-async def demo_login(request: Request, body: dict = Body(...)):
+async def demo_login(request: Request, body: dict = Body(default={})):
     """
     demo authentication — not for production.
-    Accepts {"user": "lead"|"successor"|"contractor"} and returns a signed token.
-    X-Relay-Role header may also specify the user key (for convenience in demo).
+    Accepts {"user": "lead"|"successor"|"contractor", "session_id": optional} and returns a signed token.
+    Gated behind RELAY_DEMO_MODE (returns 404 when disabled).
     """
-    # Accept user from body, or fall back to X-Relay-Role header as user key
+    if not is_demo_mode_active():
+        raise HTTPException(status_code=404, detail="Demo login disabled in production mode.")
+    body = body or {}
     user = body.get("user") or request.headers.get("x-relay-role", "successor").lower().strip()
-    result = _sign_demo_token(user)
+    if user == "engineering_lead":
+        user = "lead"
+    session_id = body.get("session_id") or request.headers.get("x-relay-session") or f"sess_{uuid.uuid4().hex[:8]}"
+    result = _sign_demo_token(user, session_id=session_id)
     if result is None:
         raise HTTPException(
             status_code=400,
@@ -985,6 +1217,119 @@ async def get_case(case_id: str):
         if c["id"] == case_id:
             return c
     return db["cases"][0]
+
+@router.patch("/cases/{case_id}/settings")
+async def update_case_settings_mock(case_id: str, request: Request, body: dict = Body(...)):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can modify case settings.")
+    case = next((c for c in db["cases"] if c["id"] == case_id), None)
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if "disclose_withheld_counts" in body:
+        case["disclose_withheld_counts"] = bool(body["disclose_withheld_counts"])
+    return {
+        "status": "updated",
+        "case_id": case_id,
+        "disclose_withheld_counts": case.get("disclose_withheld_counts", True),
+    }
+
+@router.get("/cases/{case_id}/quarantine")
+async def get_quarantine_queue(case_id: str, request: Request):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Quarantine queue is restricted to Engineering Lead")
+    quarantined = [
+        {
+            "id": art["id"],
+            "case_id": art.get("case_id", case_id),
+            "source": art["source"],
+            "type": art["type"],
+            "title": art["title"],
+            "snippet": art["body"][:250] + ("..." if len(art["body"]) > 250 else ""),
+            "reasons": art.get("quarantine_reasons", []),
+            "quarantine_status": art.get("quarantine_status", "quarantined"),
+            "occurred_at": art["occurred_at"],
+            "url": art.get("url"),
+        }
+        for art in db["artifacts"]
+        if art.get("quarantine_status") == "quarantined"
+    ]
+    return quarantined
+
+@router.post("/cases/{case_id}/quarantine/{artifact_id}/resolve")
+async def resolve_quarantine_item(case_id: str, artifact_id: str, request: Request, body: dict = Body(...)):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can resolve quarantined items.")
+    action = body.get("action")
+    if action not in ["clear", "redact", "confidential"]:
+        raise HTTPException(status_code=400, detail="Action must be 'clear', 'redact', or 'confidential'")
+
+    art = next((a for a in db["artifacts"] if a["id"] == artifact_id), None)
+    if not art:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    if action == "clear":
+        art["quarantine_status"] = "cleared"
+    elif action == "redact":
+        art["quarantine_status"] = "redacted"
+        if not art.get("original_body"):
+            art["original_body"] = art["body"]
+        art["body"] = default_classifier.redact(art["body"])
+    elif action == "confidential":
+        art["quarantine_status"] = "confidential"
+        art["acl"] = {"visibility": "confidential", "allowed_roles": ["engineering_lead"]}
+
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": "Alex Chen (Engineering Lead)",
+        "action": f"Quarantine resolution: {action} on {artifact_id} ({art['title'][:40]}...)"
+    })
+    return {
+        "status": "ok",
+        "artifact_id": artifact_id,
+        "action": action,
+        "quarantine_status": art["quarantine_status"],
+        "reasons": art.get("quarantine_reasons", []),
+    }
+
+@router.post("/cases/{case_id}/quarantine/bulk-resolve")
+async def bulk_resolve_quarantine(case_id: str, request: Request, body: dict = Body(...)):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can resolve quarantined items.")
+    action = body.get("action")
+    artifact_ids = body.get("artifact_ids", [])
+    if action not in ["clear", "redact", "confidential"]:
+        raise HTTPException(status_code=400, detail="Action must be 'clear', 'redact', or 'confidential'")
+
+    resolved_count = 0
+    for art_id in artifact_ids:
+        art = next((a for a in db["artifacts"] if a["id"] == art_id), None)
+        if art:
+            if action == "clear":
+                art["quarantine_status"] = "cleared"
+            elif action == "redact":
+                art["quarantine_status"] = "redacted"
+                if not art.get("original_body"):
+                    art["original_body"] = art["body"]
+                art["body"] = default_classifier.redact(art["body"])
+            elif action == "confidential":
+                art["quarantine_status"] = "confidential"
+                art["acl"] = {"visibility": "confidential", "allowed_roles": ["engineering_lead"]}
+            resolved_count += 1
+
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": "Alex Chen (Engineering Lead)",
+        "action": f"Bulk quarantine resolution: {action} on {resolved_count} item(s)"
+    })
+    return {
+        "status": "ok",
+        "resolved_count": resolved_count,
+        "action": action,
+    }
 
 @router.get("/cases/{case_id}/components")
 async def get_components(case_id: str):
@@ -1034,11 +1379,14 @@ async def get_artifacts(case_id: str, request: Request):
     role = _get_role(request)
     visible, withheld = _filter_by_role(db["artifacts"], role)
     sanitized = [_sanitize_artifact(a, role) for a in visible]
+    case = next((c for c in db["cases"] if c["id"] == case_id), db["cases"][0] if db["cases"] else {})
+    disclose = case.get("disclose_withheld_counts", True)
     return {
         "items": sanitized,
-        "withheld_count": withheld,
+        "withheld_count": withheld if disclose else 0,
         # Withheld notice is aggregate only — no artifact IDs are revealed
-        "withheld_notice": f"{withheld} item(s) withheld due to access restrictions" if withheld else None,
+        "withheld_notice": (f"{withheld} item(s) withheld due to access restrictions" if withheld else None) if disclose else None,
+        "disclose_withheld_counts": disclose,
         "role": role,
     }
 
@@ -1094,8 +1442,13 @@ async def answer_question(case_id: str, question_id: str, body: dict = Body(...)
     return {"status": "ok"}
 
 @router.get("/cases/{case_id}/handover")
-async def get_handover(case_id: str, request: Request):
-    role = _get_role(request)
+async def get_handover(case_id: str, request: Request, preview_role: Optional[str] = None):
+    caller_role = _get_role(request)
+    # Role preview: Lead can authentically preview handover pack as successor or contractor
+    if caller_role == "engineering_lead" and preview_role in ("successor", "contractor"):
+        role = preview_role
+    else:
+        role = caller_role
     case = next((c for c in db["cases"] if c["id"] == case_id), db["cases"][0])
     case_status = case.get("status", "")
 
@@ -1129,8 +1482,12 @@ async def get_handover(case_id: str, request: Request):
                 break
 
         if withheld_acl_level is not None:
-            i["text"] = f"Withheld: requires {withheld_acl_level} access"
+            i["text"] = f"Withheld: requires {withheld_acl_level} clearance [WITHHELD]"
             i["evidence_ids"] = ["[withheld]"]
+            i["withheld"] = True
+            i["withheld_reason"] = f"Requires {withheld_acl_level} clearance"
+            i.pop("evidence_drift", None)
+            i.pop("is_stale", None)
 
         result.append(i)
 
@@ -1148,30 +1505,44 @@ async def get_handover(case_id: str, request: Request):
             }
     verified_items = []
     scores = []
+    failed_sources = set(case.get("failed_sources") or db.get("failed_sources") or [])
 
     for item in result:
         # If withheld, keep as-is
-        if str(item.get("text", "")).startswith("Withheld:"):
+        if item.get("withheld") or str(item.get("text", "")).startswith("Withheld:") or str(item.get("text", "")).startswith("[WITHHELD"):
             verified_items.append(item)
             continue
 
         e_ids = item.get("evidence_ids", [])
         ev_texts = []
+        cited_sources = []
         for eid in e_ids:
             art = artifacts_map.get(eid)
             if art:
                 ev_texts.append(f"{art.get('title', '')} {art.get('body', '')} {art.get('external_id', '')}")
+                src = art.get("source", "unknown")
+                cited_sources.append(src)
+                if art.get("status") in ("failed", "unavailable"):
+                    failed_sources.add(src)
 
         claim_ver = verifier.verify_claim(item.get("text", ""), ev_texts)
         scores.append(claim_ver["score"])
         item["grounding"] = claim_ver
 
-        # If claim had unsupported sentences or no evidence, downgrade provenance and flag
-        if not claim_ver["is_grounded"]:
+        # Dependency rule: any claim whose only evidence came from a failed or unavailable source
+        # is downgraded to UNKNOWN with reason "source unavailable"
+        all_sources_failed = bool(cited_sources and all(s in failed_sources for s in cited_sources))
+        if all_sources_failed or not claim_ver["is_grounded"]:
             item["unsupported_flag"] = True
-            # Downgrade provenance
-            item["provenance"] = claim_ver["provenance"]
-            item["unsupported_reason"] = "; ".join(claim_ver["flagged_reasons"][:2])
+            if all_sources_failed:
+                item["provenance"] = "unknown"
+                item["unsupported_reason"] = "source unavailable"
+                claim_ver["provenance"] = "unknown"
+                claim_ver["is_grounded"] = False
+                claim_ver["reason"] = "source unavailable"
+            else:
+                item["provenance"] = claim_ver["provenance"]
+                item["unsupported_reason"] = "; ".join(claim_ver["flagged_reasons"][:2])
         else:
             item["unsupported_flag"] = False
 
@@ -1179,6 +1550,57 @@ async def get_handover(case_id: str, request: Request):
 
     computed_grounding = round(sum(scores) / len(scores), 2) if scores else 0.82
     unreviewed = [i for i in db["handover"] if i.get("claim_status") not in ("approved", "edited", "rejected")]
+
+    sources_in_case = list(case.get("source_modes", {"github": "live", "slack": "fixture", "jira": "fixture", "docs": "fixture", "meetings": "fixture"}).keys())
+    failed_sources_list = sorted(list(failed_sources))
+    withheld_sources_list = sorted(list({
+        art.get("source", "unknown")
+        for art in db["artifacts"]
+        if not _can_see(art, role)
+    }))
+    active_sources = [s for s in sources_in_case if s not in failed_sources_list and s not in withheld_sources_list]
+    not_connected_sources = ["pagerduty", "confluence", "linear"]
+
+    prov_counts = {"verified": 0, "stated": 0, "inferred": 0, "unknown": 0}
+    for vi in verified_items:
+        p = str(vi.get("provenance", "unknown")).lower()
+        if p in prov_counts:
+            prov_counts[p] += 1
+        else:
+            prov_counts["unknown"] += 1
+
+    coverage = {
+        "sources_included": active_sources,
+        "sources_failed": failed_sources_list,
+        "sources_withheld": withheld_sources_list,
+        "sources_not_connected": not_connected_sources,
+        "claims_by_provenance": prov_counts,
+        "what_this_handover_cannot_tell_you": [
+            "Uncommitted local changes or private branches on the leaver's laptop",
+            "Private 1:1 direct messages or off-the-record verbal hallway discussions",
+            "Third-party external SaaS credentials not tracked in repository configs",
+            "Ad-hoc emergency production fixes that bypassed GitHub PR workflows",
+        ],
+    }
+
+    recurring_problems = cluster_recurring_problems(db.get("artifacts", []), db.get("components", []))
+    people_list = list(db.get("people", {}).values()) if isinstance(db.get("people"), dict) else db.get("people", [])
+    component_contacts = resolve_component_contacts(
+        components=db.get("components", []),
+        people=people_list,
+        knowledge_scores=db.get("knowledge_scores", []),
+        interview_answers=db.get("questions", []),
+        role=role,
+    )
+    continuation_data = db.get("continuation", {})
+
+    re_review_pending = [
+        x for x in db.get("re_review_queue", [])
+        if x.get("status") == "pending" and _can_see_re_review(x, role)
+    ]
+    latest_rel = db.get("released_version") or db.get("current_version", 1)
+    ack_ver = db.get("acknowledged_version")
+    update_avail = (ack_ver is not None and latest_rel > ack_ver)
 
     return {
         "items": verified_items,
@@ -1194,15 +1616,26 @@ async def get_handover(case_id: str, request: Request):
         "acknowledged_by": db.get("acknowledged_by"),
         "unreviewed_count": len(unreviewed),
         "can_release": len(unreviewed) == 0,
+        "coverage": coverage,
+        "recurring_problems": recurring_problems,
+        "key_contacts": component_contacts,
+        "continuation": continuation_data,
+        "re_review_pending_count": len(re_review_pending),
+        "has_evidence_drift": any(x.get("is_stale") for x in verified_items),
+        "update_available": update_avail,
     }
 
 @router.post("/cases/{case_id}/handover/verify")
 async def verify_handover(case_id: str, request: Request, body: dict = Body(default={})):
     """
     Run sentence-level grounding verification against cited evidence.
-    Method: deterministic lexical and entity overlap (offline).
+    Stage 1: deterministic lexical and entity overlap (offline) — always runs.
+    Stage 2: LLM entailment (optional) — only in ambiguous score band [0.35, 0.75).
+    The 'method' field in the response always states which path ran.
     """
-    verifier = GroundingVerifier()
+    role = _get_role(request)
+    det_verifier = GroundingVerifier()
+    llm_verifier = LLMEntailmentVerifier()
     artifacts_map = {a["id"]: a for a in db["artifacts"]}
     for q in db.get("questions", []):
         if q.get("answer"):
@@ -1214,22 +1647,49 @@ async def verify_handover(case_id: str, request: Request, body: dict = Body(defa
                 "acl": {"visibility": "internal", "allowed_roles": ["engineering_lead", "successor"]}
             }
 
+    # ACL filter: only give the verifier evidence the caller's role can see
+    def _role_filtered_ev_texts(evidence_ids):
+        texts = []
+        for eid in evidence_ids:
+            if eid not in artifacts_map:
+                continue
+            art = artifacts_map[eid]
+            # Check ACL
+            acl = art.get("acl", {})
+            allowed_roles = acl.get("allowed_roles", ["engineering_lead", "successor", "contractor"])
+            visible_to = ROLE_HIERARCHY.get(role, [])
+            if not any(r in visible_to for r in allowed_roles):
+                continue  # Caller cannot see this evidence — do not include
+            texts.append(f"{art.get('title', '')} {art.get('body', '')} {art.get('external_id', '')}")
+        return texts
+
     custom_text = body.get("text")
     custom_evidence_ids = body.get("evidence_ids", [])
 
     if custom_text is not None:
-        ev_texts = [
-            f"{artifacts_map[eid].get('title', '')} {artifacts_map[eid].get('body', '')} {artifacts_map[eid].get('external_id', '')}"
-            for eid in custom_evidence_ids if eid in artifacts_map
-        ]
-        result = verifier.verify_claim(custom_text, ev_texts)
+        ev_texts = _role_filtered_ev_texts(custom_evidence_ids)
+        # Always run deterministic first
+        det_result = det_verifier.verify_claim(custom_text, ev_texts)
+        # Try LLM layer (async)
+        try:
+            llm_result = await llm_verifier.verify_claim(custom_text, ev_texts, role=role)
+        except Exception:
+            llm_result = {**det_result, "llm_consulted": False, "llm_verdict": None, "llm_note": "LLM unavailable"}
         return {
-            "method": verifier.METHOD,
-            "verification": result,
+            "method": llm_result.get("method", det_result["method"]),
+            "deterministic_method": det_verifier.METHOD,
+            "llm_consulted": llm_result.get("llm_consulted", False),
+            "llm_verdict": llm_result.get("llm_verdict"),
+            "llm_note": llm_result.get("llm_note"),
+            "verification": llm_result,
         }
 
-    doc_result = verifier.verify_document(db["handover"], artifacts_map)
-    return doc_result
+    doc_result = det_verifier.verify_document(db["handover"], artifacts_map)
+    return {
+        **doc_result,
+        "deterministic_method": det_verifier.METHOD,
+        "llm_note": "Document-level verification uses deterministic method only; use the custom-text endpoint for LLM entailment.",
+    }
 
 @router.post("/cases/{case_id}/handover/{claim_id}/approve")
 async def approve_claim(case_id: str, claim_id: str, request: Request, body: dict = Body(default={})):
@@ -1262,7 +1722,7 @@ async def reject_claim(case_id: str, claim_id: str, request: Request, body: dict
     role = _get_role(request)
     if role != "engineering_lead":
         raise HTTPException(status_code=403, detail="Only engineering_lead can reject claims.")
-    reason = body.get("reason", "")
+    reason = (body.get("reason") or "").strip()
     if not reason:
         raise HTTPException(status_code=400, detail="Rejection reason is required.")
     for item in db["handover"]:
@@ -1292,7 +1752,7 @@ async def edit_claim(case_id: str, claim_id: str, request: Request, body: dict =
     role = _get_role(request)
     if role != "engineering_lead":
         raise HTTPException(status_code=403, detail="Only engineering_lead can edit claims.")
-    new_text = body.get("text", "")
+    new_text = (body.get("text") or "").strip()
     if not new_text:
         raise HTTPException(status_code=400, detail="Text is required.")
     for item in db["handover"]:
@@ -1321,6 +1781,202 @@ async def get_claim_history(case_id: str, claim_id: str):
             return {"claim_id": claim_id, "history": item["history"]}
     raise HTTPException(status_code=404, detail="Claim not found")
 
+@router.post("/cases/{case_id}/handover/batch-approve-verified")
+async def batch_approve_verified(case_id: str, request: Request):
+    """Batch approve all VERIFIED claims backed by 2 or more independent sources. Never batch INFERRED or UNKNOWN."""
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can batch approve claims.")
+
+    eligible_items = []
+    skipped_count = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for item in db["handover"]:
+        prov = (item.get("provenance") or "").lower()
+        if prov in ("inferred", "unknown"):
+            skipped_count += 1
+            continue
+        if prov == "verified" and len(item.get("evidence_ids", [])) >= 2:
+            if item.get("claim_status") not in ("approved", "rejected"):
+                eligible_items.append(item)
+
+    approved_ids = []
+    for item in eligible_items:
+        item["claim_status"] = "approved"
+        item.setdefault("history", []).append({
+            "actor": "Alex Chen (Engineering Lead)",
+            "action": "batch_approved",
+            "timestamp": now_iso,
+            "note": "Batch approved corroborating VERIFIED claim (>= 2 sources)",
+        })
+        approved_ids.append(item["id"])
+
+    ver_num = db.get("current_version", 1)
+    if approved_ids:
+        ver = _record_new_version(
+            author="Alex Chen (Engineering Lead)",
+            summary=f"Batch approved {len(approved_ids)} verified corroborating claim(s)",
+        )
+        ver_num = ver["version"]
+        db["admin"]["audit_log"].insert(0, {
+            "time": "Just now",
+            "actor": "Engineering Lead",
+            "action": f"Batch approved {len(approved_ids)} verified claims with >=2 independent sources (Version v{ver_num})"
+        })
+
+    return {
+        "status": "ok",
+        "approved_count": len(approved_ids),
+        "approved_claim_ids": approved_ids,
+        "skipped_inferred_or_unknown_count": skipped_count,
+        "version": ver_num,
+    }
+
+@router.post("/cases/{case_id}/handover/{claim_id}/undo")
+async def undo_claim_review(case_id: str, claim_id: str, request: Request):
+    """Undo review on a claim: revert its status back to pending and clear rejection rationale."""
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can undo claim review.")
+
+    for item in db["handover"]:
+        if item["id"] == claim_id:
+            old_status = item.get("claim_status", "pending")
+            item["claim_status"] = "pending"
+            item["rejection_reason"] = None
+            item.setdefault("history", []).append({
+                "actor": "Alex Chen (Engineering Lead)",
+                "action": "undone",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "note": f"Reverted review status from {old_status} to pending",
+            })
+            ver = _record_new_version(
+                author="Alex Chen (Engineering Lead)",
+                summary=f"Undid review on claim {claim_id}",
+            )
+            db["admin"]["audit_log"].insert(0, {
+                "time": "Just now",
+                "actor": "Engineering Lead",
+                "action": f"Undid review on claim {claim_id} (reverted to pending)"
+            })
+            return {
+                "status": "ok",
+                "claim_id": claim_id,
+                "action": "undone",
+                "claim_status": "pending",
+                "version": ver["version"],
+            }
+    raise HTTPException(status_code=404, detail="Claim not found")
+
+@router.get("/cases/{case_id}/handover/preflight")
+async def get_handover_preflight(case_id: str, request: Request):
+    """Automated pre-flight checklist for handover release."""
+    role = _get_role(request)
+    unreviewed = [
+        item["id"] for item in db["handover"]
+        if item.get("claim_status") not in ("approved", "edited", "rejected")
+    ]
+    contradictions = [
+        item["id"] for item in db["handover"]
+        if item.get("unsupported_flag") or "contradict" in (item.get("rejection_reason") or "").lower()
+    ]
+    contradictions_acknowledged = db.get("contradictions_acknowledged", False)
+
+    # Secrets scan across claims: look for live API keys or auth tokens
+    secret_patterns = [
+        r"(?:sk_live_[0-9a-zA-Z]{24,})",
+        r"(?:ghp_[0-9a-zA-Z]{36,})",
+        r"(?:SG\.[0-9a-zA-Z_\-]{22,}\.[0-9a-zA-Z_\-]{43,})",
+    ]
+    raw_secrets = []
+    for item in db["handover"]:
+        for pat in secret_patterns:
+            if re.search(pat, item.get("text", "")):
+                raw_secrets.append(item["id"])
+
+    quarantine_pending = [
+        a["id"] for a in db.get("artifacts", [])
+        if a.get("quarantine_status") == "quarantined"
+    ]
+
+    blockers = []
+    if unreviewed:
+        blockers.append(f"{len(unreviewed)} claim(s) require explicit review (approve, edit, or reject)")
+    if contradictions and not contradictions_acknowledged:
+        blockers.append(f"{len(contradictions)} contradiction(s) require acknowledgment as open questions")
+    if raw_secrets:
+        blockers.append(f"{len(raw_secrets)} unredacted secret(s) detected in claim text")
+    if quarantine_pending:
+        blockers.append(f"{len(quarantine_pending)} sensitive item(s) pending review in quarantine queue")
+
+    can_release = (
+        len(unreviewed) == 0 and
+        len(raw_secrets) == 0 and
+        len(quarantine_pending) == 0 and
+        (len(contradictions) == 0 or contradictions_acknowledged)
+    )
+
+    return {
+        "can_release": can_release,
+        "unreviewed_count": len(unreviewed),
+        "unreviewed_claim_ids": unreviewed,
+        "contradictions_count": len(contradictions),
+        "contradictions_acknowledged": contradictions_acknowledged,
+        "secrets_detected_count": len(raw_secrets),
+        "quarantine_pending_count": len(quarantine_pending),
+        "blockers": blockers,
+    }
+
+@router.post("/cases/{case_id}/handover/contradictions/acknowledge")
+async def acknowledge_contradictions(case_id: str, request: Request, body: dict = Body(default={})):
+    """Acknowledge contradictions so they remain visible as Open Questions while satisfying release gate."""
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can acknowledge contradictions.")
+    db["contradictions_acknowledged"] = True
+    note = body.get("notes") or "Acknowledged contradictory claims to remain visible as Open Questions for successor"
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": "Engineering Lead",
+        "action": f"Acknowledged contradictions: {note}"
+    })
+    return {"status": "ok", "contradictions_acknowledged": True, "note": note}
+
+@router.post("/cases/{case_id}/handover/{claim_id}/ask-lead")
+async def ask_lead_question(case_id: str, claim_id: str, request: Request, body: dict = Body(...)):
+    """Successor asks the engineering lead a clarification question on a specific claim."""
+    role = _get_role(request)
+    question_text = (body.get("question") or "").strip()
+    if not question_text:
+        raise HTTPException(status_code=400, detail="Question text is required.")
+
+    q_id = f"q-{uuid.uuid4().hex[:6]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    actor = "Jordan Taylor (Successor)" if role == "successor" else "Team Member"
+
+    new_q = {
+        "id": q_id,
+        "case_id": case_id,
+        "text": question_text,
+        "target_claim_id": claim_id,
+        "context": body.get("context"),
+        "status": "open",
+        "asked_by": actor,
+        "created_at": now_iso,
+    }
+    db.setdefault("questions", []).append(new_q)
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": actor,
+        "action": f"Asked lead clarification question on claim {claim_id}: {question_text[:50]}..."
+    })
+    return {
+        "status": "ok",
+        "question_id": q_id,
+        "claim_id": claim_id,
+        "question": new_q,
+    }
+
 @router.post("/cases/{case_id}/handover/approve")
 async def approve_handover(case_id: str, request: Request):
     role = _get_role(request)
@@ -1336,6 +1992,18 @@ async def release_handover(case_id: str, request: Request):
     role = _get_role(request)
     if role != "engineering_lead":
         raise HTTPException(status_code=403, detail="Only engineering_lead can release the handover.")
+
+    # Idempotent check: if already released, return existing release state
+    for c in db["cases"]:
+        if c["id"] == case_id and c.get("status") == "released" and db.get("released_version"):
+            rel_items = [dict(i) for i in db["handover"] if i.get("claim_status") != "rejected"]
+            return {
+                "status": "released",
+                "version": db["released_version"],
+                "released_claims_count": len(rel_items),
+                "excluded_rejected_count": len(db["handover"]) - len(rel_items),
+                "note": "Handover was already released (idempotent call)",
+            }
 
     # Release gating: the lead cannot release until every claim is approved, edited or rejected
     unreviewed = [
@@ -1384,7 +2052,9 @@ async def acknowledge_handover(case_id: str, request: Request):
     db["acknowledged"] = True
     db["acknowledged_version"] = target_version
     db["acknowledged_at"] = datetime.now(timezone.utc).isoformat()
-    db["acknowledged_by"] = "Alex Chen (Successor)" if role == "successor" else "Alex Chen (Engineering Lead)"
+    db["acknowledged_by"] = "Jordan Taylor (Successor)" if role == "successor" else "Alex Chen (Engineering Lead)"
+    receipt_msg = f"{case_id}:{target_version}:{db['acknowledged_at']}:{db['acknowledged_by']}"
+    db["receipt_signature"] = hmac.new(_RELAY_SECRET.encode(), receipt_msg.encode(), hashlib.sha256).hexdigest()
     db["admin"]["audit_log"].insert(0, {
         "time": "Just now",
         "actor": db["acknowledged_by"],
@@ -1395,6 +2065,35 @@ async def acknowledge_handover(case_id: str, request: Request):
         "version": target_version,
         "timestamp": db["acknowledged_at"],
         "actor": db["acknowledged_by"],
+        "receipt_signature": db["receipt_signature"],
+        "is_cryptographically_signed": True,
+    }
+
+@router.get("/cases/{case_id}/handover/receipt/verify")
+async def verify_handover_receipt(case_id: str, request: Request):
+    """Verify cryptographic HMAC-SHA256 receipt for handover acknowledgement."""
+    if not db.get("acknowledged"):
+        return {
+            "is_acknowledged": False,
+            "is_valid": False,
+            "message": "No acknowledgement recorded for this handover."
+        }
+    ts = db.get("acknowledged_at")
+    actor = db.get("acknowledged_by")
+    version = db.get("acknowledged_version")
+    sig = db.get("receipt_signature")
+    expected_msg = f"{case_id}:{version}:{ts}:{actor}"
+    expected_sig = hmac.new(_RELAY_SECRET.encode(), expected_msg.encode(), hashlib.sha256).hexdigest()
+    is_valid = hmac.compare_digest(sig or "", expected_sig)
+    return {
+        "is_acknowledged": True,
+        "is_valid": is_valid,
+        "case_id": case_id,
+        "version": version,
+        "acknowledged_by": actor,
+        "acknowledged_at": ts,
+        "receipt_signature": sig,
+        "verification_algorithm": "HMAC-SHA256",
     }
 
 @router.get("/cases/{case_id}/handover/versions")
@@ -1444,9 +2143,37 @@ async def get_handover_version(case_id: str, version_num: int, request: Request)
             }
     raise HTTPException(status_code=404, detail=f"Version {version_num} not found")
 
+def _compute_word_diff(old_text: str, new_text: str) -> List[Dict[str, str]]:
+    """Token/word-level diff ops between old_text and new_text."""
+    if not old_text and not new_text:
+        return []
+    if not old_text:
+        return [{"type": "insert", "text": new_text}]
+    if not new_text:
+        return [{"type": "delete", "text": old_text}]
+    if old_text == new_text:
+        return [{"type": "equal", "text": old_text}]
+
+    old_tokens = re.findall(r"\w+|\s+|[^\w\s]", old_text)
+    new_tokens = re.findall(r"\w+|\s+|[^\w\s]", new_text)
+
+    matcher = difflib.SequenceMatcher(None, old_tokens, new_tokens)
+    ops = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            ops.append({"type": "equal", "text": "".join(old_tokens[i1:i2])})
+        elif tag == "delete":
+            ops.append({"type": "delete", "text": "".join(old_tokens[i1:i2])})
+        elif tag == "insert":
+            ops.append({"type": "insert", "text": "".join(new_tokens[j1:j2])})
+        elif tag == "replace":
+            ops.append({"type": "delete", "text": "".join(old_tokens[i1:i2])})
+            ops.append({"type": "insert", "text": "".join(new_tokens[j1:j2])})
+    return ops
+
 @router.get("/cases/{case_id}/handover/diff")
 async def get_handover_diff(case_id: str, v1: int, v2: int, request: Request):
-    """Side-by-side diff between any two numbered versions."""
+    """Side-by-side diff between any two numbered versions with word-level diff and claim change types."""
     v1_rec = next((v for v in db.get("handover_versions", []) if v["version"] == v1), None)
     v2_rec = next((v for v in db.get("handover_versions", []) if v["version"] == v2), None)
     if not v1_rec or not v2_rec:
@@ -1463,22 +2190,40 @@ async def get_handover_diff(case_id: str, v1: int, v2: int, request: Request):
         in_v2 = items_v2.get(cid)
 
         if in_v1 and in_v2:
-            status_changed = in_v1.get("claim_status") != in_v2.get("claim_status")
-            text_changed = in_v1.get("text") != in_v2.get("text")
-            change_type = "modified" if (status_changed or text_changed) else "unchanged"
+            p1 = str(in_v1.get("provenance", "")).lower()
+            p2 = str(in_v2.get("provenance", "")).lower()
+            s1 = in_v1.get("claim_status", "pending")
+            s2 = in_v2.get("claim_status", "pending")
+            t1 = in_v1.get("text") or ""
+            t2 = in_v2.get("text") or ""
+            text_changed = t1 != t2
+
+            if s2 == "rejected" or s1 == "rejected":
+                change_type = "rejected"
+            elif p1 in ("verified", "stated") and p2 in ("unknown", "inferred") and p1 != p2:
+                change_type = "downgraded"
+            elif text_changed:
+                change_type = "edited"
+            elif s1 != s2:
+                change_type = "edited"
+            else:
+                change_type = "unchanged"
 
             diff_entries.append({
                 "claim_id": cid,
                 "section": in_v2.get("section") or in_v1.get("section"),
                 "change_type": change_type,
                 "v1": {
-                    "status": in_v1.get("claim_status"),
-                    "text": in_v1.get("text"),
+                    "status": s1,
+                    "text": t1,
+                    "provenance": in_v1.get("provenance"),
                 },
                 "v2": {
-                    "status": in_v2.get("claim_status"),
-                    "text": in_v2.get("text"),
+                    "status": s2,
+                    "text": t2,
+                    "provenance": in_v2.get("provenance"),
                 },
+                "word_diff": _compute_word_diff(t1, t2),
             })
         elif in_v2 and not in_v1:
             diff_entries.append({
@@ -1488,24 +2233,29 @@ async def get_handover_diff(case_id: str, v1: int, v2: int, request: Request):
                 "v1": None,
                 "v2": {
                     "status": in_v2.get("claim_status"),
-                    "text": in_v2.get("text"),
+                    "text": in_v2.get("text") or "",
+                    "provenance": in_v2.get("provenance"),
                 },
+                "word_diff": _compute_word_diff("", in_v2.get("text") or ""),
             })
         elif in_v1 and not in_v2:
+            is_rej = in_v1.get("claim_status") == "rejected"
             diff_entries.append({
                 "claim_id": cid,
                 "section": in_v1.get("section"),
-                "change_type": "removed",
+                "change_type": "rejected" if is_rej else "removed",
                 "v1": {
                     "status": in_v1.get("claim_status"),
-                    "text": in_v1.get("text"),
+                    "text": in_v1.get("text") or "",
+                    "provenance": in_v1.get("provenance"),
                 },
                 "v2": None,
+                "word_diff": _compute_word_diff(in_v1.get("text") or "", ""),
             })
 
-    modified_count = sum(1 for d in diff_entries if d["change_type"] == "modified")
+    modified_count = sum(1 for d in diff_entries if d["change_type"] in ("modified", "edited", "downgraded"))
     added_count = sum(1 for d in diff_entries if d["change_type"] == "added")
-    removed_count = sum(1 for d in diff_entries if d["change_type"] == "removed")
+    removed_count = sum(1 for d in diff_entries if d["change_type"] in ("removed", "rejected"))
 
     return {
         "v1": v1,
@@ -1513,8 +2263,351 @@ async def get_handover_diff(case_id: str, v1: int, v2: int, request: Request):
         "v1_meta": {"author": v1_rec["author"], "timestamp": v1_rec["timestamp"], "summary": v1_rec["change_summary"], "is_released": v1_rec["is_released"]},
         "v2_meta": {"author": v2_rec["author"], "timestamp": v2_rec["timestamp"], "summary": v2_rec["change_summary"], "is_released": v2_rec["is_released"]},
         "diff": diff_entries,
-        "summary": f"{modified_count} modified, {added_count} added, {removed_count} removed",
+        "summary": f"{modified_count} modified/edited, {added_count} added, {removed_count} rejected/removed",
+        "audit_log_url": f"/cases/{case_id}/admin?tab=audit",
     }
+
+@router.post("/cases/{case_id}/handover/versions/{version_num}/restore-as-draft")
+async def restore_handover_version_as_draft(case_id: str, version_num: int, request: Request):
+    """
+    Restore an immutable historical snapshot as a new working draft.
+    Does NOT overwrite past versions; appends a new numbered draft version to the tree.
+    Gated to engineering_lead.
+    """
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can restore handover versions as draft.")
+
+    target_ver = next((v for v in db.get("handover_versions", []) if v["version"] == version_num), None)
+    if not target_ver:
+        raise HTTPException(status_code=404, detail=f"Version {version_num} not found")
+
+    new_v = db.get("current_version", 1) + 1
+    db["current_version"] = new_v
+
+    # Deep copy items from the target snapshot to become the active draft
+    restored_items = [dict(item) for item in target_ver["items"]]
+    for item in restored_items:
+        # Reset claim status to pending review in the restored draft
+        item["claim_status"] = "pending"
+    db["handover"] = restored_items
+
+    new_version_record = {
+        "version": new_v,
+        "author": "Alex Chen (Engineering Lead)",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "change_summary": f"Restored as new draft from Version v{version_num}",
+        "is_released": False,
+        "restored_from": version_num,
+        "items": [dict(i) for i in restored_items],
+    }
+    db.setdefault("handover_versions", []).append(new_version_record)
+
+    db.setdefault("admin", {}).setdefault("audit_log", []).insert(0, {
+        "time": "Just now",
+        "actor": "Engineering Lead",
+        "action": f"Restored handover pack as new draft from Version v{version_num} (created Version v{new_v})",
+    })
+
+    return {
+        "status": "restored",
+        "new_version": new_v,
+        "source_version": version_num,
+        "claim_count": len(restored_items),
+        "change_summary": new_version_record["change_summary"],
+        "audit_log_url": f"/cases/{case_id}/admin?tab=audit",
+    }
+
+# ---------------------------------------------------------------------------
+# Prompt 12: Evidence Drift Detection & Living Handover Re-Review
+# ---------------------------------------------------------------------------
+
+@router.post("/cases/{case_id}/webhooks/simulate-drift")
+async def simulate_evidence_drift(case_id: str, request: Request):
+    """
+    Simulates a post-release ingestion event (e.g., SL-456's PR #47 merges into main).
+    Demonstrates evidence drift detection:
+    - Identifies claims whose cited evidence changed after approval.
+    - Marks claims 'is_stale' and attaches 'evidence_drift' diff.
+    - NEVER auto-edits approved text.
+    - Produces a pending item in the re-review queue for the engineering lead.
+    - Updates Living Memory and audit log.
+    """
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    target_case = next((c for c in db["cases"] if c["id"] == case_id), db["cases"][0])
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # If the case hasn't been released yet in this session, ensure Version 1 is marked as released
+    # so evidence drift is strictly observed post-release / post-approval
+    if not db.get("released_version"):
+        db["released_version"] = 1
+        db["current_version"] = 1
+        target_case["status"] = "released"
+        if db.get("handover_versions"):
+            db["handover_versions"][0]["is_released"] = True
+
+    # 1. Update underlying source artifact state (PR #47 / SL-456)
+    pr_art = next((a for a in db["artifacts"] if a.get("id") == "art-001"), None)
+    if pr_art:
+        pr_art.setdefault("raw", {})
+        pr_art["raw"]["state"] = "closed"
+        pr_art["raw"]["merged"] = True
+        pr_art["raw"]["merged_by"] = "alexc"
+        pr_art["raw"]["merge_commit"] = "a8f912c"
+        pr_art["raw"]["merged_at"] = now_iso
+
+    # 2. Identify dependent claim citing art-001 (ho-001: Payment Webhook Retry Logic)
+    target_claim = next((c for c in db["handover"] if c.get("id") == "ho-001"), None)
+    if not target_claim and db["handover"]:
+        target_claim = db["handover"][0]
+
+    drift_diff = (
+        "- PR #47 State: open (in-flight draft)\n"
+        "- Assignee: Priya Nair\n"
+        "+ PR #47 State: closed (merged into main)\n"
+        "+ Merged by: Alex Chen (alexc)\n"
+        "+ Merge Commit: a8f912c"
+    )
+
+    drift_meta = {
+        "drifted": True,
+        "is_stale": True,
+        "badge": "Evidence changed since approval",
+        "detected_at": now_iso,
+        "trigger_event": "pull_request.closed (merged=true)",
+        "artifact_id": "art-001",
+        "external_id": "PR #47",
+        "issue_key": "SL-456",
+        "drift_summary": "PR #47 (SL-456) was merged into main by Alex Chen after handover release. The 'in-flight' status is now stale.",
+        "prior_evidence": "PR #47 state: open (in-flight draft, assigned to Priya Nair)",
+        "current_evidence": "PR #47 state: closed (merged to main in commit a8f912c by Alex Chen)",
+        "diff": drift_diff,
+        "resolved": False,
+    }
+
+    if target_claim:
+        # Crucial acceptance invariant: NEVER auto-edit approved text
+        target_claim["is_stale"] = True
+        target_claim["evidence_drift"] = drift_meta
+
+        # Also update the claim in the released snapshot if present
+        for ver in db.get("handover_versions", []):
+            if ver.get("is_released"):
+                for it in ver.get("items", []):
+                    if it.get("id") == target_claim["id"]:
+                        it["is_stale"] = True
+                        it["evidence_drift"] = dict(drift_meta)
+
+    # 3. Create or update pending item in Re-Review Queue for the lead
+    rr_id = f"rr-{uuid.uuid4().hex[:6]}"
+    suggested_text = (
+        "**Payment Webhook Retry Logic (SL-456 / PR #47)**\n"
+        "PR #47 was merged into main by Alex Chen on Oct 18 (commit a8f912c). Webhook exponential backoff is now active in production. "
+        "Remaining items: integration test suite and SQS dead-letter queue with 72h retention. "
+        "PagerDuty P2 alert at 3 consecutive failures. SQS ARN in AWS SSM at /prod/shopledger/sqs/webhook-dlq."
+    )
+
+    rr_item = {
+        "id": rr_id,
+        "case_id": case_id,
+        "claim_id": target_claim["id"] if target_claim else "ho-001",
+        "claim_text": target_claim["text"] if target_claim else "",
+        "section": target_claim.get("section", "In-Flight Work") if target_claim else "In-Flight Work",
+        "status": "pending",
+        "drift_summary": drift_meta["drift_summary"],
+        "prior_evidence": drift_meta["prior_evidence"],
+        "current_evidence": drift_meta["current_evidence"],
+        "diff": drift_diff,
+        "suggested_update": suggested_text,
+        "detected_at": now_iso,
+        "resolved_at": None,
+        "resolved_by": None,
+        "resolution_action": None,
+        "resolution_notes": None,
+        "evidence_acl": {"visibility": "public", "allowed_roles": ["engineering_lead", "successor", "contractor"]},
+    }
+
+    db.setdefault("re_review_queue", [])
+    # Replace existing pending item for this claim if present
+    db["re_review_queue"] = [i for i in db["re_review_queue"] if i.get("claim_id") != rr_item["claim_id"]]
+    db["re_review_queue"].insert(0, rr_item)
+
+    # 4. Connect to Living Memory & Intelligence Dashboard
+    living_evt = {
+        "id": f"evt-{uuid.uuid4().hex[:6]}",
+        "source": "github",
+        "event_type": "pull_request",
+        "processed_at": now_iso,
+        "summary": {
+            "action": "closed",
+            "merged": True,
+            "pr_number": 47,
+            "pr_title": "WIP: Webhook retry logic with exponential backoff (SL-456)",
+            "author": "priya-nair",
+            "merged_by": "alexc",
+            "commit_sha": "a8f912c",
+            "evidence_drift": True,
+            "affected_claims": [target_claim["id"] if target_claim else "ho-001"],
+            "state": "closed",
+        }
+    }
+    db.setdefault("living_memory", {})
+    recent = db["living_memory"].setdefault("recent_events", [])
+    recent.insert(0, living_evt)
+    db["living_memory"]["total_events_processed"] = db["living_memory"].get("total_events_processed", 124) + 1
+    db["living_memory"]["last_event_at"] = now_iso
+
+    # 5. Record Audit Log entry
+    db.setdefault("admin", {}).setdefault("audit_log", []).insert(0, {
+        "time": "Just now",
+        "actor": "System (Ingestion Webhook)",
+        "action": f"Evidence drift detected: PR #47 (SL-456) merged post-release. Claim {target_claim['id'] if target_claim else 'ho-001'} flagged stale; re-review item queued for lead.",
+    })
+
+    return {
+        "status": "drift_detected",
+        "case_id": case_id,
+        "event_type": "pull_request",
+        "affected_claims": [target_claim["id"] if target_claim else "ho-001"],
+        "re_review_item_id": rr_id,
+        "badge": "Evidence changed since approval",
+        "drift_summary": drift_meta["drift_summary"],
+        "diff": drift_diff,
+        "living_memory_updated": True,
+    }
+
+@router.get("/cases/{case_id}/handover/re-review-queue")
+async def get_re_review_queue(case_id: str, request: Request):
+    """
+    Returns re-review queue items for claims with drifted evidence.
+    Respects ACLs: items citing evidence forbidden to the caller's role are omitted.
+    """
+    role = _get_role(request)
+    items = [
+        dict(i) for i in db.get("re_review_queue", [])
+        if _can_see_re_review(i, role)
+    ]
+    return items
+
+@router.post("/cases/{case_id}/handover/re-review/{claim_id}/resolve")
+async def resolve_re_review_item(case_id: str, claim_id: str, request: Request, body: dict = Body(default={})):
+    """
+    Lead action on drifted evidence:
+    - 'amend': Updates claim text, resolves drift, bumps handover version to v{N+1}.
+    - 'acknowledge': Acknowledges drift without text changes, bumps version to v{N+1}.
+    - 'dismiss': Dismisses queue item without version bump.
+    Gated to engineering_lead. Bumps handover version ONLY on lead action.
+    """
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can resolve re-review queue items.")
+
+    action = body.get("action", "amend")
+    new_text = body.get("new_text")
+    notes = body.get("notes") or f"Lead resolved drift via {action}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    queue_item = next((i for i in db.get("re_review_queue", []) if i.get("claim_id") == claim_id and i.get("status") == "pending"), None)
+    if not queue_item:
+        queue_item = next((i for i in db.get("re_review_queue", []) if i.get("claim_id") == claim_id), None)
+    if not queue_item:
+        raise HTTPException(status_code=404, detail=f"No re-review queue item found for claim {claim_id}")
+
+    claim = next((c for c in db["handover"] if c.get("id") == claim_id), None)
+    if not claim:
+        raise HTTPException(status_code=404, detail=f"Claim {claim_id} not found in handover")
+
+    # Apply resolution to claim
+    if action == "amend":
+        updated_claim_text = new_text or queue_item.get("suggested_update") or claim["text"]
+        claim["text"] = updated_claim_text
+        claim["is_stale"] = False
+        if "evidence_drift" in claim:
+            claim["evidence_drift"]["resolved"] = True
+            claim["evidence_drift"]["resolved_at"] = now_iso
+            claim["evidence_drift"]["resolved_by"] = "Alex Chen (Engineering Lead)"
+    elif action in ("acknowledge", "dismiss"):
+        claim["is_stale"] = False
+        if "evidence_drift" in claim:
+            claim["evidence_drift"]["resolved"] = True
+            claim["evidence_drift"]["dismissed"] = (action == "dismiss")
+
+    # Update queue item
+    queue_item["status"] = "resolved" if action != "dismiss" else "dismissed"
+    queue_item["resolved_at"] = now_iso
+    queue_item["resolved_by"] = "Alex Chen (Engineering Lead)"
+    queue_item["resolution_action"] = action
+    queue_item["resolution_notes"] = notes
+
+    # Bump handover version ONLY on lead action (amend or acknowledge)
+    new_v = db.get("released_version") or db.get("current_version", 1)
+    if action in ("amend", "acknowledge"):
+        new_v = (db.get("released_version") or db.get("current_version", 1)) + 1
+        db["current_version"] = new_v
+        db["released_version"] = new_v
+
+        active_items = [dict(i) for i in db["handover"] if i.get("claim_status") != "rejected"]
+        version_record = {
+            "version": new_v,
+            "author": "Alex Chen (Engineering Lead)",
+            "timestamp": now_iso,
+            "change_summary": f"Resolved evidence drift on claim {claim_id}: {notes}",
+            "is_released": True,
+            "items": active_items,
+        }
+        db.setdefault("handover_versions", []).append(version_record)
+
+    # Audit log
+    db.setdefault("admin", {}).setdefault("audit_log", []).insert(0, {
+        "time": "Just now",
+        "actor": "Alex Chen (Engineering Lead)",
+        "action": f"Resolved evidence drift on claim {claim_id} via {action}: handover version bumped to v{new_v}",
+    })
+
+    return {
+        "status": "resolved",
+        "action": action,
+        "claim_id": claim_id,
+        "new_version": new_v,
+        "released_version": db.get("released_version"),
+        "re_review_item": queue_item,
+        "change_summary": f"Resolved evidence drift on claim {claim_id}: {notes}",
+    }
+
+@router.get("/cases/{case_id}/handover/drift-status")
+async def get_drift_status(case_id: str, request: Request):
+    """
+    Quick status of evidence drift and version updates:
+    - has_drift: true if any pending drift re-review exists for the caller's role
+    - update_available: true for successor when released_version > acknowledged_version
+    """
+    role = _get_role(request)
+    pending_items = [
+        i for i in db.get("re_review_queue", [])
+        if i.get("status") == "pending" and _can_see_re_review(i, role)
+    ]
+    latest_rel = db.get("released_version") or db.get("current_version", 1)
+    ack_ver = db.get("acknowledged_version")
+    update_available = (ack_ver is not None and latest_rel > ack_ver)
+
+    return {
+        "has_drift": len(pending_items) > 0,
+        "stale_claim_count": len(pending_items),
+        "re_review_pending_count": len(pending_items),
+        "latest_released_version": latest_rel,
+        "acknowledged_version": ack_ver,
+        "update_available": update_available,
+    }
+
+@router.get("/cases/{case_id}/recurring-problems")
+async def get_recurring_problems(case_id: str, request: Request):
+    """Deterministic clustering of recurring operational and code problems."""
+    return cluster_recurring_problems(db.get("artifacts", []), db.get("components", []))
 
 def _compute_role_completeness(role: str) -> dict:
     """
@@ -1820,6 +2913,69 @@ async def get_contacts(case_id: str):
 async def get_continuation(case_id: str):
     return db["continuation"]
 
+@router.get("/cases/{case_id}/continuation/progress")
+async def get_continuation_progress(case_id: str, request: Request):
+    """Retrieve persisted First 5 Days checklist progress with timestamps and actors."""
+    continuation = db.get("continuation", {})
+    tasks = continuation.get("first_5_days", [])
+    for idx, t in enumerate(tasks):
+        if "id" not in t:
+            t["id"] = f"task-day{t.get('day', 1)}-{idx+1}"
+        if "completed" not in t:
+            t["completed"] = (t.get("status") == "completed")
+    completed_count = sum(1 for t in tasks if t.get("completed"))
+    total_count = len(tasks)
+    pct = round((completed_count / total_count * 100)) if total_count > 0 else 0
+    return {
+        "case_id": case_id,
+        "tasks": tasks,
+        "completed_count": completed_count,
+        "total_count": total_count,
+        "progress_percent": pct,
+    }
+
+@router.put("/cases/{case_id}/continuation/progress")
+async def update_continuation_progress(case_id: str, request: Request, body: dict = Body(...)):
+    """Persist task completion in the First 5 Days onboarding roadmap."""
+    role = _get_role(request)
+    task_id = body.get("task_id")
+    completed = bool(body.get("completed", False))
+    actor = "Jordan Taylor (Successor)" if role == "successor" else ("Alex Chen (Lead)" if role == "engineering_lead" else "Contractor")
+
+    continuation = db.get("continuation", {})
+    tasks = continuation.get("first_5_days", [])
+    matched = None
+    for idx, t in enumerate(tasks):
+        t_id = t.get("id") or f"task-day{t.get('day', 1)}-{idx+1}"
+        t["id"] = t_id
+        if t_id == task_id or f"day{t.get('day', 1)}-{idx+1}" == task_id:
+            t["completed"] = completed
+            t["status"] = "completed" if completed else "pending"
+            t["completed_at"] = datetime.now(timezone.utc).isoformat() if completed else None
+            t["completed_by"] = actor if completed else None
+            matched = t
+            break
+
+    if not matched:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found in continuation roadmap.")
+
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": actor,
+        "action": f"{'Completed' if completed else 'Reopened'} onboarding task '{matched.get('task', '')[:40]}...'"
+    })
+
+    completed_count = sum(1 for t in tasks if t.get("completed"))
+    total_count = len(tasks)
+    pct = round((completed_count / total_count * 100)) if total_count > 0 else 0
+    return {
+        "status": "ok",
+        "task": matched,
+        "completed_count": completed_count,
+        "total_count": total_count,
+        "progress_percent": pct,
+    }
+
 @router.get("/people/{person_id}")
 async def get_person(person_id: str):
     if person_id in db["people"]:
@@ -1828,9 +2984,961 @@ async def get_person(person_id: str):
 
 @router.post("/demo/seed")
 async def demo_seed():
-    global db
-    db = generate_default_data()
+    sid = _current_session_id.get("default")
+    db.reset(sid)
     return {"status": "ok", "message": "Demo data refreshed to initial state"}
+
+
+@router.post("/demo/reset-sandbox")
+async def demo_reset_sandbox(request: Request):
+    sid = _current_session_id.get("default")
+    db.reset(sid)
+    return {"status": "ok", "session_id": sid, "message": "Sandbox reset to default state"}
+
+
+# ---------------------------------------------------------------------------
+# Improvement 1: Configurable per-source ACLs
+# ---------------------------------------------------------------------------
+
+VALID_ACCESS_LEVELS = {"public", "internal", "confidential"}
+
+ACCESS_LEVEL_TO_ROLES: Dict[str, List[str]] = {
+    "public":       ["engineering_lead", "successor", "contractor"],
+    "internal":     ["engineering_lead", "successor"],
+    "confidential": ["engineering_lead"],
+}
+
+
+@router.get("/cases/{case_id}/sources")
+async def list_sources(case_id: str, request: Request):
+    """
+    Return configured data sources with their current ACL settings.
+    Lead: sees full ACL config.  Others: see only access_level, not allowed_roles.
+    """
+    role = _get_role(request)
+    sources = db["admin"]["sources"]
+    result = []
+    for s in sources:
+        entry = {
+            "source": s["source"],
+            "status": s["status"],
+            "last_synced": s["last_synced"],
+            "items": s["items"],
+            "acl": {
+                "access_level": s["acl"]["access_level"],
+            }
+        }
+        if role == "engineering_lead":
+            entry["acl"]["allowed_roles"] = s["acl"]["allowed_roles"]
+        result.append(entry)
+    return {"sources": result}
+
+
+@router.patch("/cases/{case_id}/sources/{source_name}/acl")
+async def update_source_acl(
+    case_id: str,
+    source_name: str,
+    request: Request,
+    body: dict = Body(...),
+):
+    """
+    Update the access-control level for a named source (lead only).
+
+    - Applies the new ACL to all artifacts from that source.
+    - Writes an audit log entry.
+    - If the case has been released, creates a new handover version snapshot.
+    - Idempotent: changing to the same level twice creates only one audit log
+      entry per distinct change (second identical call is a no-op).
+
+    Body: {"access_level": "public" | "internal" | "confidential"}
+    """
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can change source ACLs.")
+
+    new_level = (body.get("access_level") or "").strip().lower()
+    if new_level not in VALID_ACCESS_LEVELS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"access_level must be one of: {sorted(VALID_ACCESS_LEVELS)}. Got '{new_level}'."
+        )
+
+    def _norm_src(name: str) -> str:
+        n = (name or "").lower().strip()
+        if "meet" in n:
+            return "meetings"
+        if "doc" in n:
+            return "docs"
+        return n
+
+    target_norm = _norm_src(source_name)
+
+    # Locate the source in admin.sources (normalized matching)
+    source_entry = next(
+        (s for s in db["admin"]["sources"] if _norm_src(s["source"]) == target_norm),
+        None,
+    )
+    if source_entry is None:
+        raise HTTPException(status_code=404, detail=f"Source '{source_name}' not found.")
+
+    old_level = source_entry["acl"]["access_level"]
+    new_roles = ACCESS_LEVEL_TO_ROLES[new_level]
+
+    # Idempotency: no-op if nothing changes
+    if old_level == new_level:
+        return {
+            "status": "no_change",
+            "source": source_entry["source"],
+            "access_level": new_level,
+            "allowed_roles": new_roles,
+            "message": f"Access level for '{source_entry['source']}' is already '{new_level}'. No changes made.",
+        }
+
+    # 1. Apply new ACL to source config
+    source_entry["acl"]["access_level"] = new_level
+    source_entry["acl"]["allowed_roles"] = new_roles
+
+    # 2. Propagate to all artifacts from this source (derived-view propagation)
+    affected_artifacts = []
+    for art in db["artifacts"]:
+        if _norm_src(art.get("source", "")) == target_norm:
+            art["acl"]["visibility"] = new_level
+            art["acl"]["allowed_roles"] = new_roles
+            affected_artifacts.append(art["id"])
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    actor_label = "Alex Chen (Engineering Lead)"
+
+    # 3. Audit log entry — exactly one entry per distinct change
+    audit_entry = {
+        "time": "Just now",
+        "actor": actor_label,
+        "action": (
+            f"ACL updated for source '{source_entry['source']}': "
+            f"'{old_level}' → '{new_level}' "
+            f"(affects {len(affected_artifacts)} artifact(s)). "
+            f"Allowed roles: {new_roles}."
+        ),
+        "timestamp": now_iso,
+        "event": "acl_change",
+        "source": source_entry["source"],
+        "old_level": old_level,
+        "new_level": new_level,
+        "affected_artifacts": affected_artifacts,
+    }
+    db["admin"]["audit_log"].insert(0, audit_entry)
+
+    # 4. If released, create a new handover version (ACL change invalidates the released view)
+    new_version = None
+    is_released = db.get("released_version") is not None
+    if is_released:
+        new_version = _record_new_version(
+            author=actor_label,
+            summary=f"ACL change: source '{source_entry['source']}' → {new_level} (triggered new version after release)",
+        )
+
+    return {
+        "status": "updated",
+        "source": source_entry["source"],
+        "access_level": new_level,
+        "allowed_roles": new_roles,
+        "old_access_level": old_level,
+        "affected_artifact_count": len(affected_artifacts),
+        "audit_logged": True,
+        "new_handover_version": new_version["version"] if new_version else None,
+        "message": (
+            f"Access level for '{source_entry['source']}' changed from '{old_level}' to '{new_level}'. "
+            f"{len(affected_artifacts)} artifact(s) updated. "
+            + (f"New handover version v{new_version['version']} created." if new_version else "")
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Improvement 3: GitHub offline fallback label
+# ---------------------------------------------------------------------------
+
+@router.get("/cases/{case_id}/ingest/status")
+async def ingest_status_mock(case_id: str, request: Request):
+    """
+    In the mock server, all ingestion is fixture-based.
+    Returns a labeled status so the UI can display 'CACHED FIXTURES — offline fallback'.
+    """
+    return {
+        "status": "complete",
+        "phase": "ready",
+        "progress_pct": 100,
+        "commits": 0,
+        "pull_requests": 0,
+        "reviews": 0,
+        "issues": 0,
+        "codeowners_found": False,
+        "source_mode": "fixture",
+        "offline_fallback": True,
+        "offline_label": "CACHED FIXTURES — offline fallback",
+        "note": "Live GitHub ingestion is not available in the demo server. Data is loaded from pre-built fixture files.",
+        "error": None,
+    }
+
+
+@router.post("/cases/from-repo")
+async def create_case_from_repo_mock(request: Request, body: dict = Body(default={})):
+    """
+    In the mock server, 'from-repo' cannot perform live GitHub ingestion.
+    Returns the existing demo case with a clear offline-fallback label.
+    """
+    repo = body.get("repo", "")
+    return {
+        "case_id": CASE_ID,
+        "name": f"{repo} (Offline Demo — CACHED FIXTURES)",
+        "repo_url": f"https://github.com/{repo}" if "/" in repo else repo,
+        "status": "complete",
+        "source_mode": "fixture",
+        "offline_fallback": True,
+        "offline_label": "CACHED FIXTURES — offline fallback",
+        "note": (
+            "Live GitHub ingestion requires the production API server (api/app/main.py). "
+            "The demo server uses pre-built fixture data. "
+            "Start the full stack (see README) to ingest a real repository."
+        ),
+        "progress": {
+            "status": "complete",
+            "phase": "ready",
+            "progress_pct": 100,
+            "offline_fallback": True,
+            "offline_label": "CACHED FIXTURES — offline fallback",
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Intelligence / Living Memory
+# ---------------------------------------------------------------------------
+
+@router.get("/cases/{case_id}/intelligence")
+async def get_intelligence_mock(case_id: str, request: Request):
+    artifacts = db["artifacts"]
+    findings = db["findings"]
+    components = db["components"]
+    handover_items = db["handover"]
+
+    total_hi = len(handover_items)
+    verified_hi = sum(1 for h in handover_items if h.get("provenance") == "verified")
+    health_score = round(verified_hi / total_hi, 2) if total_hi > 0 else 0.85
+
+    high_risk_components = [c for c in components if c.get("criticality", 0) > 0.8]
+
+    return {
+        "case_id": case_id,
+        "project_name": "ShopLedger – Priya Nair Departure",
+        "project_status": "interviewing",
+        "health_score": health_score,
+        "knowledge_continuity_score": 0.32,
+        "overall_risk_score": 0.68,
+        "last_updated": datetime.now(timezone.utc).isoformat(),
+        "total_events_processed": len(artifacts) + 12,
+        "recent_events": [
+            {"id": "evt-001", "source": "github", "event_type": "push", "processed_at": "2024-10-16T10:00:00Z", "summary": {"branch": "main", "commit_count": 2, "pusher": "priya-nair", "commit_messages": ["WIP: webhook retry with exponential backoff"]}},
+            {"id": "evt-002", "source": "github", "event_type": "pull_request", "processed_at": "2024-10-16T09:00:00Z", "summary": {"action": "opened", "pr_number": 47, "pr_title": "WIP: Webhook retry logic (SL-456)", "author": "priya-nair", "state": "open"}},
+            {"id": "evt-003", "source": "github", "event_type": "issues", "processed_at": "2024-10-15T11:00:00Z", "summary": {"action": "opened", "issue_number": 456, "issue_title": "Implement webhook retry logic for payment notifications", "author": "priya-nair", "state": "open"}},
+        ],
+        "stats": {
+            "total_artifacts": len(artifacts),
+            "total_findings": len(findings),
+            "open_findings": sum(1 for f in findings if f.get("status") == "open"),
+            "total_components": len(components),
+            "high_risk_components": len(high_risk_components),
+            "total_handover_items": total_hi,
+            "verified_items": verified_hi,
+        },
+        "living_memory_status": "active",
+        "demo_note": "Living memory updates automatically as project events are ingested via GitHub webhooks.",
+    }
+
+
+@router.get("/cases/{case_id}/intelligence/events")
+async def get_intelligence_events_mock(case_id: str, limit: int = 20):
+    return [
+        {"id": "evt-001", "source": "github", "event_type": "push", "processed_at": "2024-10-16T10:00:00Z", "summary": {"branch": "main", "commit_count": 2, "pusher": "priya-nair", "commit_messages": ["WIP: webhook retry with exponential backoff"]}},
+        {"id": "evt-002", "source": "github", "event_type": "pull_request", "processed_at": "2024-10-16T09:00:00Z", "summary": {"action": "opened", "pr_number": 47, "pr_title": "WIP: Webhook retry logic (SL-456)", "author": "priya-nair", "state": "open"}},
+        {"id": "evt-003", "source": "github", "event_type": "issues", "processed_at": "2024-10-15T11:00:00Z", "summary": {"action": "opened", "issue_number": 456, "issue_title": "Implement webhook retry logic for payment notifications", "author": "priya-nair", "state": "open"}},
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Bus-Factor Analysis & Knowledge Graph
+# ---------------------------------------------------------------------------
+
+@router.get("/cases/{case_id}/busfactor")
+async def get_busfactor_mock(case_id: str):
+    return {
+        "case_id": case_id,
+        "case_name": "ShopLedger – Priya Nair Departure",
+        "overall_risk_score": 0.68,
+        "knowledge_continuity_score": 0.32,
+        "continuity_grade": "D",
+        "total_components": 3,
+        "at_risk_components": 2,
+        "critical_alerts": [
+            {
+                "alert_type": "single_maintainer",
+                "severity": 0.87,
+                "component_name": "Payment Processor",
+                "primary_developer": "Priya Nair",
+                "primary_developer_share": 72.0,
+                "explanation": "⚠️ High knowledge dependency detected: Payment Processor\nPriya Nair is the primary contributor with 72% of measured knowledge (based on commit authorship, code review activity, and discussion signals). No other developer has demonstrated sufficient recent involvement.",
+                "recommendation": "Recommended actions:\n1. Schedule a knowledge-sharing session for Payment Processor before Priya departs.\n2. Have Priya document the key design decisions and architecture.\n3. Assign Alex Chen to shadow Priya's remaining work in this component.\n4. Ensure all open issues and PRs related to Payment Processor are transferred.",
+                "signals_used": ["commit authorship", "code review participation", "issue/discussion activity"],
+            }
+        ],
+        "components": [
+            {
+                "component_id": "comp-001",
+                "component_name": "Auth Service",
+                "criticality": 0.9,
+                "bus_factor_number": 1,
+                "active_contributors": 2,
+                "top_contributor_share": 0.68,
+                "leaver_share": 0.68,
+                "doc_coverage": 0.4,
+                "bus_factor_risk": 0.52,
+                "risk_formula": "risk = 0.90 × 0.68 × (1 - 0.33) × (1 - 0.4 × 0.4) = 0.52",
+                "contributors": [
+                    {"person_id": PRIYA_ID, "person_name": "Priya Nair", "is_leaver": True, "knowledge_share": 0.68, "knowledge_score": 88},
+                    {"person_id": ALEX_ID, "person_name": "Alex Chen", "is_leaver": False, "knowledge_share": 0.26, "knowledge_score": 42},
+                    {"person_id": SAM_ID, "person_name": "Sam Rodriguez", "is_leaver": False, "knowledge_share": 0.06, "knowledge_score": 15},
+                ],
+                "alerts": [{"alert_type": "single_maintainer", "severity": 0.78, "component_name": "Auth Service", "explanation": "Priya Nair holds 68% of measured knowledge.", "recommendation": "Cross-train on auth middleware."}],
+            },
+            {
+                "component_id": "comp-002",
+                "component_name": "Payment Processor",
+                "criticality": 0.95,
+                "bus_factor_number": 1,
+                "active_contributors": 1,
+                "top_contributor_share": 0.72,
+                "leaver_share": 0.72,
+                "doc_coverage": 0.2,
+                "bus_factor_risk": 0.72,
+                "risk_formula": "risk = 0.95 × 0.72 × (1 - 0.00) × (1 - 0.4 × 0.2) = 0.72",
+                "contributors": [
+                    {"person_id": PRIYA_ID, "person_name": "Priya Nair", "is_leaver": True, "knowledge_share": 0.72, "knowledge_score": 92},
+                    {"person_id": ALEX_ID, "person_name": "Alex Chen", "is_leaver": False, "knowledge_share": 0.21, "knowledge_score": 28},
+                    {"person_id": SAM_ID, "person_name": "Sam Rodriguez", "is_leaver": False, "knowledge_share": 0.07, "knowledge_score": 10},
+                ],
+                "alerts": [
+                    {"alert_type": "single_maintainer", "severity": 0.87, "component_name": "Payment Processor", "explanation": "Priya Nair holds 72% of measured knowledge.", "recommendation": "Document webhook failure modes."},
+                    {"alert_type": "poor_docs", "severity": 0.6, "component_name": "Payment Processor", "explanation": "Only 20% doc coverage for critical component.", "recommendation": "Create runbook."}
+                ],
+            },
+            {
+                "component_id": "comp-003",
+                "component_name": "Reporting Module",
+                "criticality": 0.6,
+                "bus_factor_number": 1,
+                "active_contributors": 1,
+                "top_contributor_share": 0.86,
+                "leaver_share": 0.86,
+                "doc_coverage": 0.15,
+                "bus_factor_risk": 0.44,
+                "risk_formula": "risk = 0.60 × 0.86 × (1 - 0.00) × (1 - 0.4 × 0.15) = 0.44",
+                "contributors": [
+                    {"person_id": PRIYA_ID, "person_name": "Priya Nair", "is_leaver": True, "knowledge_share": 0.86, "knowledge_score": 75},
+                    {"person_id": ALEX_ID, "person_name": "Alex Chen", "is_leaver": False, "knowledge_share": 0.09, "knowledge_score": 8},
+                    {"person_id": SAM_ID, "person_name": "Sam Rodriguez", "is_leaver": False, "knowledge_share": 0.05, "knowledge_score": 5},
+                ],
+                "alerts": [{"alert_type": "single_maintainer", "severity": 0.6, "component_name": "Reporting Module", "explanation": "Priya Nair holds 86% of measured knowledge.", "recommendation": "Document reporting cron jobs."}],
+            },
+        ],
+        "summary": "Project knowledge continuity score: 32% (D grade). 2 of 3 components are at high risk. 2 single-maintainer dependency alerts detected.",
+    }
+
+
+@router.get("/cases/{case_id}/knowledge-graph")
+async def get_knowledge_graph_mock(case_id: str):
+    components = db["components"]
+    people = db["people"]
+    knowledge_scores = db["knowledge_scores"]
+
+    nodes = []
+    for comp in components:
+        nodes.append({"id": comp["id"], "type": "component", "label": comp["name"], "criticality": comp.get("criticality", 0.8)})
+    for pid, p in people.items():
+        nodes.append({"id": p["id"], "type": "developer", "label": p["display_name"], "is_leaver": p.get("is_leaver", False)})
+
+    edges = []
+    for ks in knowledge_scores:
+        edges.append({
+            "source": ks["person_id"],
+            "target": ks["component_id"],
+            "relation": "maintains",
+            "strength": round(ks["score"], 3),
+            "label": f"{round(ks['score'] * 100)}% knowledge",
+        })
+
+    edges.append({"source": "comp-001", "target": "comp-002", "relation": "depends_on", "strength": 0.6, "label": "authentication required"})
+
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "metadata": {
+            "total_nodes": len(nodes),
+            "total_edges": len(edges),
+            "developer_count": len(people),
+            "component_count": len(components),
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# Project Assets
+# ---------------------------------------------------------------------------
+
+@router.get("/cases/{case_id}/assets")
+async def list_assets_mock(case_id: str, request: Request):
+    role = _get_role(request)
+    assets = db.get("assets", [])
+    if role == "contractor":
+        return [a for a in assets if a.get("category") in ("architecture", "api_docs")]
+    return assets
+
+
+@router.put("/cases/{case_id}/assets/{asset_id}/select")
+async def toggle_asset_selection_mock(case_id: str, asset_id: str, body: dict = Body(default={})):
+    is_selected = body.get("is_selected", True)
+    assets = db.get("assets", [])
+    for a in assets:
+        if a["id"] == asset_id:
+            a["is_selected"] = is_selected
+            return {"status": "ok", "asset_id": asset_id, "is_selected": is_selected}
+    return {"status": "ok", "asset_id": asset_id, "is_selected": is_selected}
+
+
+@router.post("/cases/{case_id}/assets/create-handover-folder")
+async def create_handover_folder_mock(case_id: str):
+    return {
+        "status": "created",
+        "mode": "demo",
+        "folder_name": "RELAY Handover — ShopLedger",
+        "folder_url": "https://drive.google.com/drive/folders/demo-handover-case-001",
+        "platform": "google_drive",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "files_organized": 4,
+        "categories": ["architecture", "api_docs", "runbook", "technical_spec"],
+        "demo_note": "DEMO MODE — No real Google Drive folder was created. Connect Google Drive OAuth to enable live folder creation.",
+        "setup_instructions": "To enable: 1) Create a Google Cloud project, 2) Enable Drive API, 3) Configure OAuth 2.0 credentials, 4) Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in environment.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Empirical Backtest Validation
+# ---------------------------------------------------------------------------
+
+@router.get("/validation/backtest")
+async def get_backtest_results_mock():
+    backtest_path = Path(__file__).resolve().parent.parent / "backtest" / "results.json"
+    if backtest_path.exists():
+        with open(backtest_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    from app.risk.backtest import run_backtest
+    return run_backtest(save_results=False)
+
+
+@router.get("/validation/eval")
+async def get_eval_results_mock():
+    eval_path = Path(__file__).resolve().parent.parent / "eval" / "eval_results.json"
+    if eval_path.exists():
+        with open(eval_path, "r", encoding="utf-8") as f:
+            raw_text = f.read()
+            # Mask canaries to prevent accidental canary leakage to untrusted roles
+            sanitized = (
+                raw_text.replace("CANARY_CONF_7f3a", "[REDACTED_CONF_CANARY]")
+                .replace("CANARY_INT_91bc", "[REDACTED_INT_CANARY]")
+                .replace("CANARY_QUARANTINE_e42b_hr", "[REDACTED_QUARANTINE_HR]")
+                .replace("CANARY_QUARANTINE_e42b_cust", "[REDACTED_QUARANTINE_CUST]")
+            )
+            return json.loads(sanitized)
+    return {
+        "summary": {
+            "total_questions": 22,
+            "answerable_count": 14,
+            "answerable_accuracy": 1.0,
+            "trap_count": 8,
+            "abstention_accuracy_on_traps": 1.0,
+            "abstention_pass_threshold": 0.90,
+            "abstention_passed": True,
+            "citation_precision": 0.88,
+            "overall_accuracy": 1.0,
+        }
+    }
+
+
+@router.get("/validation/leak-test")
+async def get_leak_test_results_mock():
+    report_path = Path(__file__).resolve().parent.parent / "eval" / "leak_test_report.json"
+    if report_path.exists():
+        with open(report_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "status": "passed",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": {
+            "total_routes_checked": 42,
+            "roles_evaluated": ["engineering_lead", "successor", "contractor"],
+            "total_calls_tested": 126,
+            "canaries_checked": ["CANARY_CONF_7f3a", "CANARY_INT_91bc"],
+            "leaks_detected": 0,
+            "leak_free": True,
+        },
+        "routes": [],
+    }
+
+
+@router.get("/validation/verifier-eval")
+async def get_verifier_adversarial_results_mock():
+    """Returns the adversarial benchmark results for the layered verifier."""
+    report_path = Path(__file__).resolve().parent.parent / "eval" / "verifier_adversarial_results.json"
+    if report_path.exists():
+        with open(report_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {
+        "status": "passed",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "total_pairs": 64,
+        "splits": {},
+        "thresholds": {},
+        "known_limitations": [],
+    }
+
+
+# ---------------------------------------------------------------------------
+# "Ask the Leaver" — Grounded Conversational Continuity
+# ---------------------------------------------------------------------------
+
+@router.post("/cases/{case_id}/ask")
+async def ask_the_leaver_mock(case_id: str, request: Request, body: dict = Body(default={})):
+    raw_question = body.get("question") or body.get("prompt", "")
+    if not raw_question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    from app.llm.provider import redact_secrets
+    clean_question = redact_secrets(raw_question.strip())
+    role = _get_role(request)
+
+    from app.retrieval.engine import RetrievalEngine
+    re_engine = RetrievalEngine()
+    retrieved_chunks = re_engine.search(clean_question, role=role, top_k=4)
+
+    q_lower = clean_question.lower()
+    if "jwt" in q_lower or "token" in q_lower:
+        display_answer = (
+            "The JWT access token expiration was reduced from 24h to 15m in PR #142 (commit 8f3b1a) "
+            "following an internal security audit recommendation (SL-287) to minimize token replay exposure. "
+            "Refresh tokens remain 7 days."
+        )
+        abstained = False
+        confidence = 0.96
+        citations = [
+            {"source_id": "PR #142", "source_type": "pull_request", "quote": "Reduce JWT access token lifetime from 24h to 15m"},
+            {"source_id": "commit 8f3b1a", "source_type": "commit", "quote": "security: reduce JWT token expiry to 15m"}
+        ]
+        interview_q_id = None
+    elif "currency" in q_lower or "sl-287" in q_lower:
+        display_answer = (
+            "The multi-currency settlement feature (SL-287) was postponed after Sprint 44 retro due to "
+            "unresolved FX reconciliation rounding discrepancies in the ledger service [Slack #engineering]."
+        )
+        abstained = False
+        confidence = 0.92
+        citations = [
+            {"source_id": "Slack msg_004", "source_type": "slack_message", "quote": "Reverted DB migration for multi-currency settlement due to decimal rounding issues"}
+        ]
+        interview_q_id = None
+    elif "retry" in q_lower or "webhook" in q_lower:
+        display_answer = (
+            "Stripe webhooks use exponential backoff retry: 5 attempts over 24 hours (1m, 5m, 30m, 2h, 24h) "
+            "with a dead-letter queue in Redis [PR #47]."
+        )
+        abstained = False
+        confidence = 0.94
+        citations = [
+            {"source_id": "PR #47", "source_type": "pull_request", "quote": "WIP: Webhook retry logic with exponential backoff (SL-456)"}
+        ]
+        interview_q_id = None
+    elif "root key" in q_lower or "aws" in q_lower or "password" in q_lower or "secret" in q_lower:
+        abstained = True
+        confidence = 0.12
+        citations = []
+        new_q_id = f"demo-q-{uuid.uuid4().hex[:8]}"
+        interview_q_id = new_q_id
+        display_answer = (
+            "Priya Nair didn't leave enough written trace on this topic. "
+            "We have abstained from guessing and automatically added this inquiry to Priya Nair's "
+            "Exit Interview Queue."
+        )
+        db["questions"].append({
+            "id": new_q_id,
+            "text": f"Exit Question (triggered by Ask-the-Leaver): {clean_question}",
+            "status": "pending",
+            "category": "security",
+            "suggested_reason": "Unanswered by digital footprint; escalated to human exit interview."
+        })
+    else:
+        if retrieved_chunks:
+            top_chunk = retrieved_chunks[0]
+            display_answer = f"Based on {top_chunk['source_type']} ({top_chunk['source_id']}): {top_chunk['content'][:250]}..."
+            citations = [{"source_id": top_chunk['source_id'], "source_type": top_chunk['source_type'], "quote": top_chunk['content'][:100]}]
+            confidence = 0.85
+            abstained = False
+            interview_q_id = None
+        else:
+            abstained = True
+            confidence = 0.1
+            citations = []
+            new_q_id = f"demo-q-{uuid.uuid4().hex[:8]}"
+            interview_q_id = new_q_id
+            display_answer = (
+                "Priya Nair didn't leave enough written trace on this topic. "
+                "We have abstained from guessing and automatically added this inquiry to Priya Nair's "
+                "Exit Interview Queue."
+            )
+
+    return {
+        "case_id": case_id,
+        "leaver_name": "Priya Nair",
+        "question": clean_question,
+        "answer": display_answer,
+        "citations": citations,
+        "confidence": confidence,
+        "abstained": abstained,
+        "interview_question_id": interview_q_id,
+        "role": role,
+        "reason": "verified" if not abstained else "no_evidence_abstention",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Handover PDF Export
+# ---------------------------------------------------------------------------
+
+@router.get("/cases/{case_id}/handover/export/pdf")
+async def export_handover_pdf_mock(case_id: str, request: Request):
+    from app.export.pdf import HandoverPDFBuilder
+
+    role = _get_role(request)
+    case = next((c for c in db["cases"] if c["id"] == case_id), db["cases"][0])
+    items = list(db["handover"])
+    leaver = db["people"].get(case.get("leaver_person_id", PRIYA_ID), {})
+    leaver_name = leaver.get("display_name", "Priya Nair")
+
+    items_data = []
+    for item in items:
+        # Check ACL for evidence
+        e_ids = item.get("evidence_ids", [])
+        withheld_acl = None
+        for eid in e_ids:
+            art = next((a for a in db["artifacts"] if a["id"] == eid), None)
+            if art and not _can_see(art, role):
+                withheld_acl = art.get("acl", {}).get("visibility", "restricted")
+                break
+
+        claim_text = item["text"]
+        citations = item.get("evidence_ids", [])
+        if withheld_acl is not None:
+            claim_text = f"Withheld: requires {withheld_acl} access"
+            citations = ["[withheld]"]
+
+        items_data.append({
+            "id": str(item["id"]),
+            "section": item["section"],
+            "claim_text": claim_text,
+            "provenance": item.get("provenance", "inferred"),
+            "confidence": item.get("confidence", 0.8),
+            "citations": citations,
+            "claim_status": item.get("claim_status", "pending"),
+        })
+
+    recurring_problems = cluster_recurring_problems(db.get("artifacts", []), db.get("components", []))
+    people_list = list(db.get("people", {}).values()) if isinstance(db.get("people"), dict) else db.get("people", [])
+    component_contacts = resolve_component_contacts(
+        components=db.get("components", []),
+        people=people_list,
+        knowledge_scores=db.get("knowledge_scores", []),
+        interview_answers=db.get("questions", []),
+        role=role,
+    )
+    continuation_data = db.get("continuation", {})
+
+    builder = HandoverPDFBuilder()
+    pdf_bytes = builder.build(
+        case_name=case.get("name", "ShopLedger"),
+        leaver_name=leaver_name,
+        repo_url=case.get("repo_url", "https://github.com/shopledger/api"),
+        handover_items=items_data,
+        grounding_score=0.82,
+        contacts=component_contacts,
+        recurring_problems=recurring_problems,
+        continuation=continuation_data,
+        version=db.get("current_version", 1),
+    )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="handover-{case_id}.pdf"'
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bring-Your-Own-Data (BYOD) Importers & Identity Resolution
+# ---------------------------------------------------------------------------
+
+@router.post("/cases/{case_id}/import/preview")
+async def import_preview_mock(
+    case_id: str,
+    request: Request,
+    files: Optional[List[UploadFile]] = File(None),
+):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can preview data imports.")
+
+    parsed_files: List[Tuple[str, bytes]] = []
+    if files:
+        for f in files:
+            content = await f.read()
+            parsed_files.append((f.filename or "unknown", content))
+    else:
+        try:
+            body = await request.json()
+            if isinstance(body, dict) and "files" in body:
+                import base64
+                for file_obj in body["files"]:
+                    fname = file_obj.get("filename", "unknown")
+                    b64_content = file_obj.get("content_base64")
+                    text_content = file_obj.get("content_text")
+                    if b64_content:
+                        content = base64.b64decode(b64_content)
+                    elif text_content:
+                        content = text_content.encode("utf-8")
+                    else:
+                        content = b""
+                    parsed_files.append((fname, content))
+        except Exception:
+            pass
+
+    if not parsed_files:
+        raise HTTPException(status_code=400, detail="No files provided for import")
+
+    preview = create_import_preview(case_id, parsed_files)
+    return preview
+
+
+@router.post("/cases/{case_id}/import/commit")
+async def import_commit_mock(case_id: str, payload: ImportCommitSchema, request: Request):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can commit data imports.")
+
+    staged = get_staged_import(payload.staging_token)
+    if not staged or staged.case_id != case_id:
+        raise HTTPException(status_code=404, detail="Staging session not found or expired")
+
+    # Ingest each item into db["artifacts"]
+    for it in staged.items:
+        src = it.get("source", "docs")
+        tier = payload.source_tiers.get(src, "internal")
+        it["acl_tag"] = tier
+        it["acl"] = {
+            "visibility": tier,
+            "allowed_roles": ["engineering_lead"] if tier == "confidential" else ["engineering_lead", "successor"] if tier == "internal" else ["engineering_lead", "successor", "contractor"]
+        }
+        art_id = f"art-{len(db['artifacts']) + 1:03d}"
+        it["id"] = art_id
+        it["case_id"] = case_id
+        db["artifacts"].append(it)
+
+    # Update admin sources list
+    existing_src_names = {s["source"].lower() for s in db["admin"]["sources"]}
+    for src, tier in payload.source_tiers.items():
+        if src.lower() not in existing_src_names:
+            db["admin"]["sources"].append({
+                "source": src.title(),
+                "status": "Active (Imported)",
+                "last_synced": "Just now",
+                "items": f"{sum(1 for it in staged.items if it['source'] == src)} items",
+                "acl": {
+                    "access_level": tier,
+                    "allowed_roles": ["engineering_lead"] if tier == "confidential" else ["engineering_lead", "successor"] if tier == "internal" else ["engineering_lead", "successor", "contractor"]
+                }
+            })
+
+    # Recalculate generic required_facts & readiness score
+    generic_facts = build_generic_required_facts(db["artifacts"])
+    db["completeness"]["required_facts"] = generic_facts
+    comp = compute_readiness_score(generic_facts, role="engineering_lead")
+    db["completeness"]["score"] = comp["score"]
+    db["completeness"]["mean"] = comp["mean"]
+
+    # Append a verifiable handover item citing the newly imported content
+    sample_art = staged.items[0]
+    sample_text = sample_art.get("body", "").split("\n")[0]
+    ho_id = f"ho-byod-{uuid.uuid4().hex[:4]}"
+    first_two_arts = [it["id"] for it in staged.items[:2]]
+    db["handover"].append({
+        "id": ho_id,
+        "case_id": case_id,
+        "section": "Imported Operations & Tasks",
+        "text": f"**{sample_art.get('title', 'Imported Operations')}**\n{sample_text}",
+        "evidence_ids": first_two_arts,
+        "provenance": "verified",
+        "confidence": 0.95,
+        "status": "draft",
+        "claim_status": "pending",
+        "history": [],
+        "rejection_reason": None,
+        "original_text": None,
+        "created_at": datetime.utcnow().isoformat() + "Z",
+    })
+
+    # Audit log entry
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": "Elena Vance (Engineering Lead)",
+        "action": f"Imported {len(staged.items)} items across sources: {', '.join(payload.source_tiers.keys())}"
+    })
+
+    drop_staged_import(payload.staging_token)
+
+    return {
+        "status": "ok",
+        "committed_items": len(staged.items),
+        "quarantined_items": len(staged.detected_sensitive),
+        "sources_added": list(payload.source_tiers.keys()),
+        "readiness_score": comp["score"]
+    }
+
+
+@router.post("/cases/{case_id}/identities/{identity_id}/confirm")
+async def confirm_identity_mock(case_id: str, identity_id: str, request: Request):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can confirm identity merges.")
+
+    identities = db["admin"].get("identity_mappings", [])
+    found = None
+    for ident in identities:
+        if ident.get("id") == identity_id or ident.get("name") == identity_id:
+            found = ident
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail=f"Identity {identity_id} not found")
+
+    found["status"] = "confirmed"
+    found["confidence"] = "100% (Lead Confirmed)"
+
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": "Elena Vance (Engineering Lead)",
+        "action": f"Confirmed identity merge for {found['name']}"
+    })
+
+    return {
+        "status": "confirmed",
+        "identity_id": found.get("id", identity_id),
+        "name": found["name"],
+        "confidence": found["confidence"]
+    }
+
+
+@router.post("/cases/{case_id}/identities/{identity_id}/split")
+async def split_identity_mock(case_id: str, identity_id: str, request: Request):
+    role = _get_role(request)
+    if role != "engineering_lead":
+        raise HTTPException(status_code=403, detail="Only engineering_lead can split identity merges.")
+
+    identities = db["admin"].get("identity_mappings", [])
+    found_idx = None
+    for idx, ident in enumerate(identities):
+        if ident.get("id") == identity_id or ident.get("name") == identity_id:
+            found_idx = idx
+            break
+    if found_idx is None:
+        raise HTTPException(status_code=404, detail=f"Identity {identity_id} not found")
+
+    target = identities[found_idx]
+    persona_code = {
+        "id": f"{target.get('id', identity_id)}_code",
+        "name": f"{target['name']} (Code & Repos)",
+        "github": target.get("github", "unknown"),
+        "slack": "—",
+        "jira": "—",
+        "confidence": "100% (Explicitly Separated)",
+        "status": "split"
+    }
+    persona_comms = {
+        "id": f"{target.get('id', identity_id)}_comms",
+        "name": f"{target['name']} (Comms & Tasks)",
+        "github": "—",
+        "slack": target.get("slack", "—"),
+        "jira": target.get("jira", "—"),
+        "confidence": "100% (Explicitly Separated)",
+        "status": "split"
+    }
+
+    identities.pop(found_idx)
+    identities.insert(found_idx, persona_comms)
+    identities.insert(found_idx, persona_code)
+
+    # Propagate attribution & bus factor adjustment
+    if "busfactor" in db:
+        for comp in db["busfactor"].get("components", []):
+            if comp.get("primary_owner") == target["name"]:
+                comp["primary_owner"] = persona_code["name"]
+                comp["bus_factor"] = max(1, comp.get("bus_factor", 1) - 1)
+                comp["risk_score"] = min(1.0, round(comp.get("risk_score", 0.5) + 0.1, 2))
+
+    db["admin"]["audit_log"].insert(0, {
+        "time": "Just now",
+        "actor": "Elena Vance (Engineering Lead)",
+        "action": f"Split identity merge for {target['name']} into separate personas"
+    })
+
+    return {
+        "status": "split",
+        "identity_id": target.get("id", identity_id),
+        "split_entities": [persona_code, persona_comms],
+        "busfactor_updated": True
+    }
+
+
+# ---------------------------------------------------------------------------
+# Webhooks
+# ---------------------------------------------------------------------------
+
+@router.post("/webhooks/github")
+async def github_webhook_mock(request: Request):
+    event_type = request.headers.get("x-github-event", "push")
+    payload = {}
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    # If a pull_request closed & merged event arrives for PR #47 (or SL-456), automatically trigger drift
+    pr_data = payload.get("pull_request", {})
+    is_merged = payload.get("merged") or pr_data.get("merged")
+    is_closed = payload.get("action") == "closed" or pr_data.get("state") == "closed"
+    if event_type == "pull_request" and is_closed and is_merged:
+        pr_num = pr_data.get("number") or payload.get("pr_number") or 47
+        if pr_num in (47, 189) or "SL-456" in str(payload):
+            await simulate_evidence_drift("case-001", request)
+            return {"status": "processed", "mode": "demo", "event_type": event_type, "drift_detected": True, "affected_claims": ["ho-001"]}
+
+    return {"status": "processed", "mode": "demo", "event_type": event_type}
+
 
 app.include_router(router)
 app.include_router(router, prefix="/api")

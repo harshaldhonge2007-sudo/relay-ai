@@ -55,6 +55,9 @@ class ArtifactSchema(BaseModel):
     body: Optional[str] = None
     raw: Dict[str, Any]
     acl_tag: str
+    quarantine_status: Optional[str] = "active"
+    quarantine_reasons: Optional[List[str]] = Field(default_factory=list)
+    original_body: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -161,6 +164,11 @@ class CaseCreateSchema(BaseModel):
     source_modes: Optional[Dict[str, str]] = None
 
 
+class CaseFromRepoSchema(BaseModel):
+    repo: str
+    since_months: int = 6
+
+
 class CaseSchema(BaseModel):
     id: uuid.UUID
     name: str
@@ -168,6 +176,7 @@ class CaseSchema(BaseModel):
     leaver_person_id: Optional[uuid.UUID] = None
     status: str
     source_modes: Dict[str, str]
+    disclose_withheld_counts: bool = True
     created_at: datetime
     updated_at: datetime
 
@@ -189,6 +198,53 @@ class JobStatusSchema(BaseModel):
     case_id: uuid.UUID
     status: str
     progress: float
-    created_at: datetime
-    completed_at: Optional[datetime] = None
-    result: Optional[Dict[str, Any]] = None
+
+
+class QuarantineResolveSchema(BaseModel):
+    action: str = Field(..., description="'clear', 'redact', or 'confidential'")
+    note: Optional[str] = None
+
+
+class QuarantineBulkResolveSchema(BaseModel):
+    action: str = Field(..., description="'clear', 'redact', or 'confidential'")
+    artifact_ids: List[str]
+    note: Optional[str] = None
+
+
+class ImportPreviewSchema(BaseModel):
+    staging_token: str
+    case_id: str
+    total_items: int
+    item_counts: Dict[str, int]
+    date_range: Dict[str, str]
+    sample_items: List[Dict[str, Any]]
+    detected_people: List[Dict[str, Any]]
+    detected_sensitive_items: List[Dict[str, Any]]
+    ingest_report: Dict[str, Any]
+
+
+class ImportCommitSchema(BaseModel):
+    staging_token: str
+    source_tiers: Dict[str, str] = Field(default_factory=dict, description="Map of source -> visibility level (public, internal, confidential)")
+
+
+class ImportCommitResultSchema(BaseModel):
+    status: str
+    committed_items: int
+    quarantined_items: int
+    sources_added: List[str]
+    readiness_score: float
+
+
+class IdentityConfirmResultSchema(BaseModel):
+    status: str
+    identity_id: str
+    name: str
+    confidence: str
+
+
+class IdentitySplitResultSchema(BaseModel):
+    status: str
+    identity_id: str
+    split_entities: List[Dict[str, Any]]
+    busfactor_updated: bool

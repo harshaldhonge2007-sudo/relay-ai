@@ -21,10 +21,12 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql://relay:relay@db:5432/relay
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       REPLAY_MODE: ${REPLAY_MODE:-false}
+      RELAY_DEMO_MODE: ${RELAY_DEMO_MODE:-1}
+      RELAY_TOKEN_SECRET: ${RELAY_TOKEN_SECRET:-relay-demo-hmac-secret}
     ports:
       - "8000:8000"
     depends_on:
@@ -32,6 +34,11 @@ services:
         condition: service_healthy
     volumes:
       - ./api:/app
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   web:
@@ -39,11 +46,12 @@ services:
       context: ./web
       dockerfile: Dockerfile.dev
     environment:
-      VITE_API_URL: http://api:8000
+      VITE_API_URL: http://localhost:8000
     ports:
       - "5173:5173"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     volumes:
       - ./web/src:/app/src
 

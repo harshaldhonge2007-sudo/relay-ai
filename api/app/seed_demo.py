@@ -198,9 +198,9 @@ async def seed_demo(session: AsyncSession) -> dict:
             author_id=priya.id, occurred_at=_dt("2024-10-14T19:00:00Z"),
             url="https://slack.com/archives/C_ENG/p1728604800",
             title="Slack: Priya Nair",
-            body="Had to revert the database migration from October 14. It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version.",
+            body="Had to revert the database migration from October 14 (CANARY_INT_91bc). It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version.",
             raw={"id": "msg_004", "channel": "C_ENG"},
-            acl_tag="readable",
+            acl_tag="restricted",
         ),
         Artifact(
             case_id=cid, source="slack", source_mode=SourceMode.FIXTURE,
@@ -290,7 +290,73 @@ async def seed_demo(session: AsyncSession) -> dict:
         ),
     ]
 
-    all_artifacts = commits + prs + slacks + jiras + docs
+    # Confidential artifacts
+    confidential_arts = [
+        Artifact(
+            case_id=cid, source="slack", source_mode=SourceMode.FIXTURE,
+            type=ArtifactType.SLACK_MESSAGE, external_id="msg_fin_001",
+            author_id=priya.id, occurred_at=_dt("2024-10-10T14:00:00Z"),
+            url="https://slack.com/archives/C_FINANCE/p1728565200",
+            title="Slack: Severance discussion in #finance-private",
+            body="Re: Priya's severance package (CANARY_CONF_7f3a) — accelerated vesting clause applies given company-initiated departure.",
+            raw={"id": "msg_fin_001", "channel": "C_FINANCE_PRIVATE"},
+            acl_tag="confidential",
+        ),
+        Artifact(
+            case_id=cid, source="slack", source_mode=SourceMode.FIXTURE,
+            type=ArtifactType.SLACK_MESSAGE, external_id="msg_q_hr_001",
+            author_id=alex.id, occurred_at=_dt("2024-10-12T14:00:00Z"),
+            url="https://slack.com/archives/C_ENG/p1728692000",
+            title="Slack: Q4 compensation and retention package update in #engineering",
+            body="Hey team, Elena Vance shared the Q4 compensation and retention package update for Priya Nair (CANARY_QUARANTINE_e42b_hr). Annual salary review and bonus package details are pending final approval under the bilateral NDA.",
+            raw={"id": "msg_q_hr_001", "channel": "C_ENG"},
+            acl_tag="internal",
+            quarantine_status="quarantined",
+            quarantine_reasons=["hr:salary", "legal:nda_lawsuit"],
+        ),
+        Artifact(
+            case_id=cid, source="slack", source_mode=SourceMode.FIXTURE,
+            type=ArtifactType.SLACK_MESSAGE, external_id="msg_q_cust_001",
+            author_id=priya.id, occurred_at=_dt("2024-10-13T10:00:00Z"),
+            url="https://slack.com/archives/C_ENG/p1728778000",
+            title="Slack: Customer escalation in #engineering",
+            body="Forwarding customer support escalation: client robert.morris@enterpriseclient.com reports CID-88219 payment webhook failing with card processing error. Customer phone is +1-415-555-8392. Ref: CANARY_QUARANTINE_e42b_cust.",
+            raw={"id": "msg_q_cust_001", "channel": "C_ENG"},
+            acl_tag="internal",
+            quarantine_status="quarantined",
+            quarantine_reasons=["customer:id", "pii:email", "pii:phone"],
+        ),
+        Artifact(
+            case_id=cid, source="jira", source_mode=SourceMode.FIXTURE,
+            type=ArtifactType.JIRA_TICKET, external_id="PAY-SEC-001",
+            author_id=priya.id, occurred_at=_dt("2024-10-12T11:00:00Z"),
+            url="https://jira.shopledger.io/browse/PAY-SEC-001",
+            title="PAY-SEC-001: Payment credential rotation (Restricted)",
+            body="Rotate Stripe live keys after Priya departure (CANARY_CONF_7f3a). Update AWS Secrets Manager.",
+            raw={"key": "PAY-SEC-001", "status": "Open"},
+            acl_tag="confidential",
+        ),
+        Artifact(
+            case_id=cid, source="docs", source_mode=SourceMode.FIXTURE,
+            type=ArtifactType.DOCUMENT, external_id="ENV_KEYS.md",
+            author_id=priya.id, occurred_at=_dt("2024-10-01T00:00:00Z"),
+            url="", title="ENV_KEYS.md",
+            body="# Production Credentials (CANARY_CONF_7f3a)\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]",
+            raw={"path": "ENV_KEYS.md"},
+            acl_tag="confidential",
+        ),
+        Artifact(
+            case_id=cid, source="meetings", source_mode=SourceMode.FIXTURE,
+            type=ArtifactType.DOCUMENT, external_id="arch-sync-oct-14.md",
+            author_id=priya.id, occurred_at=_dt("2024-10-14T10:00:00Z"),
+            url="", title="Architecture Sync — Oct 14, 2024",
+            body="Security classification: Internal (CANARY_INT_91bc)\n## Attendees: Priya, Alex, Sam, CTO\nWebhook retry strategy and PG15 upgrade.",
+            raw={"path": "seed/meetings/arch-sync-oct-14.md"},
+            acl_tag="restricted",
+        ),
+    ]
+
+    all_artifacts = commits + prs + slacks + jiras + docs + confidential_arts
     session.add_all(all_artifacts)
     await session.flush()
 

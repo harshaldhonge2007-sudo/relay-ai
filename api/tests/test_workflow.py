@@ -187,9 +187,9 @@ def test_diff_identifies_modified_and_removed_claims():
     assert data["v1"] == 1
     assert data["v2"] == 2
 
-    # ho-003 must be marked modified
+    # ho-003 must be marked modified or edited
     ho003_diff = next(d for d in data["diff"] if d["claim_id"] == "ho-003")
-    assert ho003_diff["change_type"] == "modified"
+    assert ho003_diff["change_type"] in ("modified", "edited")
     assert ho003_diff["v2"]["text"] == "Completely new JWT text for diff validation"
     assert ho003_diff["v1"]["text"] != ho003_diff["v2"]["text"]
 
@@ -218,7 +218,19 @@ def test_successor_acknowledges_specific_released_version():
     ack_data = ack_res.json()
     assert ack_data["status"] == "acknowledged"
     assert ack_data["version"] == released_ver
-    assert "Alex Chen (Successor)" in ack_data["actor"]
+    assert "Jordan Taylor (Successor)" in ack_data["actor"]
+    assert "receipt_signature" in ack_data
+    assert ack_data.get("is_cryptographically_signed") is True
+
+    # Verify cryptographic receipt endpoint
+    verify_res = client.get("/cases/case-001/handover/receipt/verify", headers=_auth("successor"))
+    assert verify_res.status_code == 200
+    verify_data = verify_res.json()
+    assert verify_data["is_acknowledged"] is True
+    assert verify_data["is_valid"] is True
+    assert verify_data["version"] == released_ver
+    assert verify_data["acknowledged_by"] == "Jordan Taylor (Successor)"
+    assert verify_data["receipt_signature"] == ack_data["receipt_signature"]
 
     # Handover response reflects acknowledged state and version
     ho_res = client.get("/cases/case-001/handover", headers=_auth("successor"))

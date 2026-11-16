@@ -237,7 +237,7 @@
       "occurred_at": "2024-10-14T19:00:00Z",
       "url": "https://slack.com/archives/C_ENG/p1728604800",
       "title": "Slack: Migration reverted in #engineering",
-      "body": "Had to revert the database migration from October 14. It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version that backfills currency_code before adding NOT NULL.",
+      "body": "Had to revert the database migration from October 14 (CANARY_INT_91bc). It was causing foreign key constraint violations in the payments table. Created a new branch with a fixed version that backfills currency_code before adding NOT NULL.",
       "raw": {
         "channel": "C_ENG"
       },
@@ -388,7 +388,7 @@
       "occurred_at": "2024-10-10T14:00:00Z",
       "url": "https://slack.com/archives/C_FINANCE/p1728565200",
       "title": "Slack: Severance discussion in #finance-private",
-      "body": "Re: Priya's severance package \u2014 the accelerated vesting clause applies given the company-initiated departure. HR has confirmed the Q4 payout schedule.",
+      "body": "Re: Priya's severance package (CANARY_CONF_7f3a) \u2014 the accelerated vesting clause applies given the company-initiated departure. HR has confirmed the Q4 payout schedule.",
       "raw": {
         "channel": "C_FINANCE_PRIVATE"
       },
@@ -410,8 +410,8 @@
       "author_id": "person-001",
       "occurred_at": "2024-10-12T11:00:00Z",
       "url": "https://jira.shopledger.io/browse/PAY-SEC-001",
-      "title": "PAY-SEC-001: Payment credential rotation (Restricted)",
-      "body": "Rotate Stripe live keys after Priya's departure. Steps:\n1. Generate new sk_live key in Stripe dashboard\n2. Update AWS Secrets Manager /prod/shopledger/stripe_key\n3. Trigger canary deployment to verify\n4. Revoke old key after 48h\nOwner: DevOps team",
+      "title": "PAY-SEC-001: Payment credential rotation (Restricted) (CANARY_CONF_7f3a)",
+      "body": "Rotate Stripe live keys after Priya's departure (CANARY_CONF_7f3a). Steps:\n1. Generate new sk_live key in Stripe dashboard\n2. Update AWS Secrets Manager /prod/shopledger/stripe_key\n3. Trigger canary deployment to verify\n4. Revoke old key after 48h\nOwner: DevOps team",
       "raw": {
         "key": "PAY-SEC-001",
         "status": "Open",
@@ -436,7 +436,7 @@
       "occurred_at": "2024-10-01T00:00:00Z",
       "url": "https://github.com/shopledger/api/blob/main/ENV_KEYS.md",
       "title": "ENV_KEYS.md (Confidential)",
-      "body": "# Production Credentials\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]\nSMTP_RELAY_HOST=smtp.sendgrid.net\nREPORT_BUCKET_NAME=shopledger-reports-prod\nDATABASE_URL=[REDACTED]\n\n# Rotation due: 2024-11-01",
+      "body": "# Production Credentials (CANARY_CONF_7f3a)\n\nSTRIPE_API_KEY=sk_live_[REDACTED]\nAWS_SECRET_ACCESS_KEY=[REDACTED]\nJWT_SECRET=[REDACTED]\nSMTP_RELAY_HOST=smtp.sendgrid.net\nREPORT_BUCKET_NAME=shopledger-reports-prod\nDATABASE_URL=[REDACTED]\n\n# Rotation due: 2024-11-01",
       "raw": {
         "path": "ENV_KEYS.md"
       },
@@ -959,25 +959,31 @@
     ],
     "identity_mappings": [
       {
+        "id": "id-001",
         "name": "Priya Nair (Leaver)",
         "github": "priya-nair",
         "slack": "@priya (U12345)",
         "jira": "jira_priya",
-        "confidence": "100% (Auto-Unified)"
+        "confidence": "100% (Auto-Unified)",
+        "status": "auto_merged"
       },
       {
+        "id": "id-002",
         "name": "Alex Chen",
         "github": "alexc",
         "slack": "@alex (U67890)",
         "jira": "alex@shopledger.io",
-        "confidence": "100% (Auto-Unified)"
+        "confidence": "94% (Fuzzy Match)",
+        "status": "auto_merged"
       },
       {
+        "id": "id-003",
         "name": "Sam Rodriguez",
         "github": "samr",
         "slack": "@sam (U11111)",
         "jira": "sam@shopledger.io",
-        "confidence": "100% (Auto-Unified)"
+        "confidence": "89% (Handle Match)",
+        "status": "auto_merged"
       }
     ],
     "audit_log": [

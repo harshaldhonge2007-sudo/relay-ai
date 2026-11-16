@@ -51,7 +51,7 @@ DEMO_USERS = {
     },
     "successor": {
         "role": "successor",
-        "display_name": "Alex Chen (Successor)",
+        "display_name": "Jordan Taylor (Successor)",
     },
     "contractor": {
         "role": "contractor",
@@ -78,16 +78,32 @@ def _make_hmac(payload_b64: str) -> str:
     ).hexdigest()
 
 
-def sign_demo_token(user: str) -> Optional[dict]:
+def is_demo_mode_active() -> bool:
+    """Check if demo login mode is enabled in the environment. Defaults to true for dev/test."""
+    val = os.environ.get("RELAY_DEMO_MODE", "1").strip().lower()
+    return val not in ("0", "false", "off", "no")
+
+
+def sign_demo_token(user: str, session_id: Optional[str] = None) -> Optional[dict]:
     """
     Create a signed demo token for the given user key.
-    Returns dict with token, role, display_name, note — or None if user unknown.
+    Includes explicit iat, exp (TTL), and optional session_id (sid).
+    Returns dict with token, role, display_name, session_id, note — or None if user unknown.
     demo authentication — not for production.
     """
     if user not in DEMO_USERS:
         return None
     info = DEMO_USERS[user]
-    payload = {"role": info["role"], "user": user, "iat": int(time.time())}
+    now = int(time.time())
+    sid = session_id or "default"
+    payload = {
+        "role": info["role"],
+        "user": user,
+        "sid": sid,
+        "iat": now,
+        "exp": now + TOKEN_TTL_SECONDS,
+    }
+
     payload_json = json.dumps(payload, separators=(",", ":"))
     payload_b64 = base64.b64encode(payload_json.encode()).decode()
     sig = _make_hmac(payload_b64)
@@ -96,15 +112,15 @@ def sign_demo_token(user: str) -> Optional[dict]:
         "token": token,
         "role": info["role"],
         "display_name": info["display_name"],
+        "session_id": session_id or payload.get("sid", "default"),
         "note": "demo authentication — not for production",
     }
 
 
-def verify_demo_token(token: str) -> Optional[str]:
+def decode_demo_token(token: str) -> Optional[dict]:
     """
-    Verify a demo token and return the role if valid, else None.
-    Returns None for expired, malformed, or tokens with invalid signatures.
-    Uses hmac.compare_digest to prevent timing attacks.
+    Verify and decode token payload using hmac.compare_digest and expiry check.
+    Returns payload dict if valid, else None.
     demo authentication — not for production.
     """
     try:
@@ -117,13 +133,31 @@ def verify_demo_token(token: str) -> Optional[str]:
             return None
         payload_json = base64.b64decode(payload_b64.encode()).decode()
         payload = json.loads(payload_json)
-        # Check expiry
-        iat = payload.get("iat", 0)
-        if int(time.time()) - iat > TOKEN_TTL_SECONDS:
-            return None
+
+        now = int(time.time())
+        exp = payload.get("exp")
+        if exp is not None:
+            if now > exp:
+                return None
+        else:
+            iat = payload.get("iat", 0)
+            if now - iat > TOKEN_TTL_SECONDS:
+                return None
+
         role = payload.get("role", "")
         if role not in ROLE_HIERARCHY:
             return None
-        return role
+        return payload
     except Exception:
         return None
+
+
+def verify_demo_token(token: str) -> Optional[str]:
+    """
+    Verify a demo token and return the role if valid, else None.
+    Returns None for expired, malformed, or tokens with invalid signatures.
+    Uses hmac.compare_digest to prevent timing attacks.
+    demo authentication — not for production.
+    """
+    payload = decode_demo_token(token)
+    return payload["role"] if payload else None

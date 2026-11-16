@@ -8,8 +8,8 @@ export const GRID_CONFIG = {
   // Lattice Geometry
   BASE_SPACING: 30,             // Lattice spacing in px on desktop (28-32px)
   MOBILE_SPACING_FACTOR: 1.4,   // Mobile spacing multiplier (~42px, reduces dot count by ~50%)
-  BASE_RADIUS: 1.15,            // Normal dot radius in px
-  LENS_MAX_RADIUS: 2.4,         // Peak dot radius under cursor lens
+  BASE_RADIUS: 1.4,             // Normal dot radius in px (crisp & visible)
+  LENS_MAX_RADIUS: 2.6,         // Peak dot radius under cursor lens
 
   // Cursor Lens & Magnetic Dynamics
   LENS_RADIUS: 155,             // Active cursor influence radius in px
@@ -54,18 +54,18 @@ export const GRID_CONFIG = {
   GHOST_INTENSITY: 0.50,        // Calmer lens influence for autonomous touch drift
 
   // Theme Colors (Strict Monochrome Tokens)
-  // Light: Base #FAFAFA, Dots #787878 (32-35%), Active #111111, Lines #444444
+  // Light: Base #FAFAFA, Dots #5A5A5A (40-45%), Active #111111, Lines #444444
   LIGHT_THEME: {
-    dotRgb: [120, 120, 120] as const,     // #787878 (ink tertiary)
-    dotBaseAlpha: 0.32,                   // 32% base opacity on light
+    dotRgb: [90, 90, 90] as const,        // #5A5A5A (crisp monochrome dot)
+    dotBaseAlpha: 0.42,                   // 42% base opacity on light (clearly visible)
     activeRgb: [17, 17, 17] as const,     // #111111 (ink primary)
     activeAlpha: 0.95,
     lineRgb: [60, 60, 60] as const,       // #3C3C3C hairlines
   },
-  // Dark: Base #111111, Dots #BBBBBB (26-28%), Active #FFFFFF, Lines #BBBBBB
+  // Dark: Base #111111, Dots #B4B4B4 (35-38%), Active #FFFFFF, Lines #BBBBBB
   DARK_THEME: {
-    dotRgb: [195, 195, 195] as const,     // #C3C3C3 (ink disabled)
-    dotBaseAlpha: 0.28,                   // 28% base opacity on dark
+    dotRgb: [180, 180, 180] as const,     // #B4B4B4 (crisp monochrome dot on dark)
+    dotBaseAlpha: 0.36,                   // 36% base opacity on dark
     activeRgb: [255, 255, 255] as const,  // #FFFFFF / full bright ink
     activeAlpha: 0.95,
     lineRgb: [210, 210, 210] as const,
@@ -323,6 +323,12 @@ export default function InteractiveGridBackground({
 
             if (detectedTone) {
               targetToneFactor = detectedTone === "dark" ? 1.0 : 0.0;
+            } else {
+              const rootDark =
+                document.documentElement.getAttribute("data-theme") === "dark" ||
+                document.documentElement.getAttribute("data-sidebar-theme") === "dark" ||
+                document.documentElement.classList.contains("dark");
+              targetToneFactor = rootDark ? 1.0 : (propsRef.current.tone === "dark" ? 1.0 : 0.0);
             }
           },
           { threshold: [0, 0.25, 0.5, 0.75, 1.0] }
@@ -417,6 +423,18 @@ export default function InteractiveGridBackground({
       }
     });
     resizeObserver.observe(document.body);
+
+    const themeObserver = new MutationObserver(() => {
+      const isDark =
+        document.documentElement.getAttribute("data-theme") === "dark" ||
+        document.documentElement.getAttribute("data-sidebar-theme") === "dark" ||
+        document.documentElement.classList.contains("dark");
+      targetToneFactor = isDark ? 1.0 : (propsRef.current.tone === "dark" ? 1.0 : 0.0);
+    });
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "data-sidebar-theme", "class"],
+    });
 
     /* ------------------------------------------------------------------ */
     /*  Static Render for prefers-reduced-motion: reduce                   */
@@ -829,6 +847,7 @@ export default function InteractiveGridBackground({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       reducedMotionQuery.removeEventListener("change", handleReducedMotionChange);
       resizeObserver.disconnect();
+      themeObserver.disconnect();
       intersectionObserver?.disconnect();
     };
   }, []);

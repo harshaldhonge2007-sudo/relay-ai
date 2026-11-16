@@ -1,7 +1,7 @@
 /** Single source of truth for the GitHub repository URL and event metadata. */
 export const REPO_URL = "https://github.com/harshaldhonge2007-sudo/relay-ai";
 /** Fill in the real event name before deployment. */
-export const EVENT_NAME = "hackathon evaluation"; // TODO: replace with actual event name
+export const EVENT_NAME = "CodersInPune Hackathon";
 
 /**
  * Optional demo video slot.

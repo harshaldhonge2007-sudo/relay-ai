@@ -141,7 +141,8 @@ def test_verify_endpoint_with_custom_text():
     res = client.post("/cases/case-001/handover/verify", headers=_auth("lead"), json=payload)
     assert res.status_code == 200
     data = res.json()
-    assert data["method"] == GroundingVerifier.METHOD
+    assert data["deterministic_method"] == GroundingVerifier.METHOD
+    assert "deterministic" in data["method"]
     ver = data["verification"]
     assert ver["is_grounded"] is True
     assert ver["provenance"] == "verified"

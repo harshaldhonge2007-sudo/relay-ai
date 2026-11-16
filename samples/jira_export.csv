@@ -1,0 +1,5 @@
+Issue key,Summary,Description,Status,Assignee,Reporter,Created,Updated,Component/s,Priority
+PAY-101,Migrate webhook handler to Stripe Payment Intents v2,Webhook retry backoff needs exponential delay and Redis idempotency locks,In Progress,Priya Nair,Alex Chen,2024-10-14 09:30:00,2024-10-15 11:20:00,payments,High
+PAY-102,Rotate expired webhook signature verification secret,Webhook secrets must be refreshed every 90 days. Update STRIPE_WEBHOOK_SECRET in AWS Secrets Manager,Closed,Priya Nair,Priya Nair,2024-10-10 14:00:00,2024-10-12 16:30:00,security,Critical
+PAY-103,Add dead letter queue for failed payment webhook events,Unparseable webhook payloads should be pushed to SQS dlq rather than dropping,Open,Alex Chen,Sam Rodriguez,2024-10-15 13:15:00,2024-10-15 13:15:00,payments,Medium
+PAY-104,Customer dispute webhook handling edge case,CID-99120 dispute handling failed when currency was GBP instead of USD,Resolved,Sam Rodriguez,Priya Nair,2024-10-11 10:00:00,2024-10-13 15:45:00,payments,High

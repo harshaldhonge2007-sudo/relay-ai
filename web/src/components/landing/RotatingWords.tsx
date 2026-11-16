@@ -76,7 +76,7 @@ export default function RotatingWords({
       {/* Animated word — aria-hidden; min-w prevents layout shift */}
       <span
         aria-hidden="true"
-        className="inline-block min-w-[7.5rem] overflow-hidden"
+        className="inline-block min-w-[15ch] overflow-hidden"
       >
         <span
           key={index}

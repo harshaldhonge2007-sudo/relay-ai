@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-surface-base text-ink-primary font-sans flex flex-col justify-between" style={{ overflowX: "clip" }}>
-      <header className="h-[56px] border-b border-edge-default px-6 flex items-center justify-between bg-white/90">
+      <header className="h-[56px] border-b border-edge-default px-6 flex items-center justify-between bg-surface-card/90">
         <Link to="/" className="font-display font-semibold text-ink-primary tracking-tight text-lg">
           RELAY<span className="font-mono text-[10px] text-ink-secondary font-bold uppercase tracking-widest ml-1">AI</span>
         </Link>

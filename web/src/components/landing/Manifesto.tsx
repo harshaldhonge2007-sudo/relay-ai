@@ -12,7 +12,7 @@ export default function Manifesto() {
   return (
     <section
       id="manifesto"
-      className="bg-ink-primary"
+      className="bg-[#111111] dark:bg-[#141414] text-white border-y border-white/5"
       aria-labelledby="manifesto-heading"
     >
       <div className="px-4 lg:px-6 py-16 lg:py-24">

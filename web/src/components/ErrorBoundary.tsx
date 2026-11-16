@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={() => window.location.href = "/"}
-                className="px-4 py-2 border border-edge-strong bg-white text-ink-primary text-xs font-semibold rounded-btn hover:bg-surface-elevated"
+                className="px-4 py-2 border border-edge-strong bg-surface-card text-ink-primary text-xs font-semibold rounded-btn hover:bg-surface-elevated"
               >
                 Return to Cases
               </button>

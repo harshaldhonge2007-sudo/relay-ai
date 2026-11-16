@@ -15,7 +15,7 @@ export default function ProofGrid({ onTryDemo }: ProofGridProps) {
   return (
     <section
       id="proof-grid"
-      className="bg-ink-primary text-white"
+      className="bg-[#111111] dark:bg-[#141414] text-white"
       aria-labelledby="proof-grid-heading"
     >
       <div className="px-4 lg:px-6 py-16 lg:py-24">

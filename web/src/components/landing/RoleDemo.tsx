@@ -31,7 +31,7 @@ export default function RoleDemo(_: RoleDemoProps) {
   return (
     <section
       id="role-demo"
-      className="bg-ink-primary text-white"
+      className="bg-[#111111] dark:bg-[#141414] text-white"
       aria-labelledby="role-demo-heading"
     >
       <div className="px-4 lg:px-6 py-16 lg:py-24">

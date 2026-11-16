@@ -41,7 +41,7 @@ This guide covers deploying **RELAY AI** to production using:
 
 ### Part A: Deploy Backend & Database on Render
 
-We have provided a [`render.yaml`](file:///e:/Relay%20AI/render.yaml) Blueprint in the root of the repository, which sets up both the PostgreSQL database and FastAPI Web Service in one click.
+We have provided a [`render.yaml`](render.yaml) Blueprint in the root of the repository, which sets up both the PostgreSQL database and FastAPI Web Service in one click.
 
 1. **Push your code to GitHub**:
    ```bash
@@ -53,7 +53,7 @@ We have provided a [`render.yaml`](file:///e:/Relay%20AI/render.yaml) Blueprint 
    - Go to [dashboard.render.com](https://dashboard.render.com).
    - Click **"New +"** $\to$ **"Blueprint"**.
    - Connect your repository: `harshaldhonge2007-sudo/relay-ai`.
-   - Render will detect [`render.yaml`](file:///e:/Relay%20AI/render.yaml) and automatically configure:
+   - Render will detect [`render.yaml`](render.yaml) and automatically configure:
      - **Database**: `relay-postgres` (PostgreSQL 16)
      - **Web Service**: `relay-api` (using `api/Dockerfile`)
    - When prompted for environment variables:
@@ -81,7 +81,7 @@ We have provided a [`render.yaml`](file:///e:/Relay%20AI/render.yaml) Blueprint 
      - Name: `VITE_API_URL`
      - Value: `https://relay-api-xxxx.onrender.com` *(your Render Web Service URL from Part A)*
 6. Click **"Deploy"**.
-7. Vercel will build and deploy the React application. [`web/vercel.json`](file:///e:/Relay%20AI/web/vercel.json) handles SPA routing so deep links and page refreshes work smoothly.
+7. Vercel will build and deploy the React application. [`web/vercel.json`](web/vercel.json) handles SPA routing so deep links and page refreshes work smoothly.
 
 ---
 

@@ -333,7 +333,7 @@ export default function Cases() {
                   placeholder="Enter case name"
                   autoFocus
                   disabled={creating}
-                  className="w-full px-3 py-2.5 text-sm text-ink-primary bg-white border border-edge-default rounded-input placeholder:text-ink-disabled focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:bg-surface-elevated"
+                  className="w-full px-3 py-2.5 text-sm text-ink-primary bg-surface-card border border-edge-default rounded-input placeholder:text-ink-disabled focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:bg-surface-elevated"
                 />
               </div>
 
@@ -351,7 +351,7 @@ export default function Cases() {
                   onChange={(e) => setNewRepoUrl(e.target.value)}
                   placeholder="https://github.com/org/repo (optional)"
                   disabled={creating}
-                  className="w-full px-3 py-2.5 text-sm text-ink-primary bg-white border border-edge-default rounded-input placeholder:text-ink-disabled focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:bg-surface-elevated"
+                  className="w-full px-3 py-2.5 text-sm text-ink-primary bg-surface-card border border-edge-default rounded-input placeholder:text-ink-disabled focus:outline-none focus:ring-2 focus:ring-neutral-400 focus:border-transparent transition-all duration-200 disabled:opacity-50 disabled:bg-surface-elevated"
                 />
               </div>
 

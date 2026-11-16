@@ -1,9 +1,10 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 import sys
 
-sys.path.insert(0, "/Users/harshaldhonge/Documents/CodersInPune/relay/api")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 class TestInflightDetector:

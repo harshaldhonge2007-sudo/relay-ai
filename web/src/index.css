@@ -2,9 +2,147 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ========================================
-   RELAY AI — Monochrome Foundation Styles
-   ======================================== */
+/* ==========================================================================
+   RELAY AI — Monochrome Foundation Styles & Deliberate Theme Tokens
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg-base: #FAFAFA;
+  --surface-card: #FFFFFF;
+  --surface-elevated: #F4F4F4;
+  --surface-recessed: #EAEAEA;
+  --surface-overlay: rgba(0, 0, 0, 0.5);
+  --surface-sidebar: #F4F4F4;
+
+  /* Sidebar Tokens (preserved for backward compatibility) */
+  --sidebar-surface: #F4F4F4;
+  --sidebar-border: #EAEAEA;
+  --sidebar-ink: #111111;
+  --sidebar-ink-muted: #555555;
+  --sidebar-active-bg: #FFFFFF;
+  --sidebar-active-border: #EAEAEA;
+
+  /* Typography / Ink Tokens — WCAG AA compliant (>= 4.5:1) */
+  --ink-primary: #111111;      /* 18.09:1 on #FAFAFA */
+  --ink-secondary: #555555;    /* 7.14:1 on #FAFAFA */
+  --ink-tertiary: #6E6E6E;     /* 4.78:1 on #FAFAFA, 4.55:1 on #F4F4F4 */
+  --ink-muted: #555555;
+  --ink-disabled: #888888;
+
+  /* Border / Edge Tokens */
+  --edge-default: #EAEAEA;
+  --edge-strong: #D9D9D9;
+  --edge-subtle: #F4F4F4;
+  --edge-dark: #333333;
+
+  /* Button Tokens */
+  --btn-primary-bg: #111111;
+  --btn-primary-text: #FFFFFF;
+  --btn-primary-hover: #262626;
+  --btn-secondary-bg: #FFFFFF;
+  --btn-secondary-border: #D9D9D9;
+  --btn-secondary-text: #111111;
+  --btn-secondary-hover: #F4F4F4;
+
+  /* Neutral scale (light) */
+  --neutral-white: #FFFFFF;
+  --neutral-50: #FAFAFA;
+  --neutral-100: #F4F4F4;
+  --neutral-200: #EAEAEA;
+  --neutral-300: #D9D9D9;
+  --neutral-400: #BBBBBB;
+  --neutral-500: #888888;
+  --neutral-600: #555555;
+  --neutral-700: #333333;
+  --neutral-800: #1C1C1C;
+  --neutral-900: #111111;
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 10px 25px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 25px 50px rgba(0, 0, 0, 0.15), 0 10px 20px rgba(0, 0, 0, 0.1);
+
+  /* Scrollbars */
+  --scrollbar-thumb: #CCCCCC;
+  --scrollbar-thumb-hover: #AAAAAA;
+  --scrollbar-track: #F0F0F0;
+
+  /* Grid & Accents */
+  --dot-grid-color: #111111;
+}
+
+[data-theme="dark"],
+[data-sidebar-theme="dark"],
+.dark {
+  color-scheme: dark;
+
+  /* Deliberate Dark Palette: Dark grays, NOT pure black */
+  --bg-base: #121212;
+  --surface-card: #1E1E1E;
+  --surface-elevated: #262626;
+  --surface-recessed: #161616;
+  --surface-overlay: rgba(0, 0, 0, 0.75);
+  --surface-sidebar: #181818;
+
+  /* Sidebar Tokens */
+  --sidebar-surface: #181818;
+  --sidebar-border: #282828;
+  --sidebar-ink: #EDEDED;
+  --sidebar-ink-muted: #A0A0A0;
+  --sidebar-active-bg: #262626;
+  --sidebar-active-border: #383838;
+
+  /* Typography / Ink Tokens — off-white, meeting WCAG AA */
+  --ink-primary: #EDEDED;      /* ~16.0:1 on #121212, ~14.2:1 on #1E1E1E */
+  --ink-secondary: #A8A8A8;    /* ~7.9:1 on #121212, ~7.0:1 on #1E1E1E */
+  --ink-tertiary: #949494;     /* ~6.3:1 on #121212, ~5.1:1 on #262626 */
+  --ink-muted: #A8A8A8;
+  --ink-disabled: #666666;
+
+  /* Subtle Borders to cleanly separate surfaces */
+  --edge-default: #2A2A2A;
+  --edge-strong: #3D3D3D;
+  --edge-subtle: #202020;
+  --edge-dark: #4A4A4A;
+
+  /* Button Tokens */
+  --btn-primary-bg: #EDEDED;
+  --btn-primary-text: #121212;
+  --btn-primary-hover: #FFFFFF;
+  --btn-secondary-bg: #1E1E1E;
+  --btn-secondary-border: #3D3D3D;
+  --btn-secondary-text: #EDEDED;
+  --btn-secondary-hover: #262626;
+
+  /* Neutral scale inverted for dark mode */
+  --neutral-white: #1E1E1E;
+  --neutral-50: #121212;
+  --neutral-100: #1E1E1E;
+  --neutral-200: #262626;
+  --neutral-300: #383838;
+  --neutral-400: #555555;
+  --neutral-500: #888888;
+  --neutral-600: #A8A8A8;
+  --neutral-700: #D0D0D0;
+  --neutral-800: #EDEDED;
+  --neutral-900: #F5F5F5;
+
+  /* Reduced Shadows with subtle 1px border highlight */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-float: 0 10px 25px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-modal: 0 25px 50px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.1);
+
+  /* Scrollbars */
+  --scrollbar-thumb: #444444;
+  --scrollbar-thumb-hover: #666666;
+  --scrollbar-track: #181818;
+
+  /* Grid & Accents */
+  --dot-grid-color: #555555;
+}
 
 @layer base {
   html,
@@ -22,6 +160,13 @@
   *::before,
   *::after {
     @apply border-edge-default;
+  }
+
+  /* Form inputs adaptive styling */
+  input,
+  textarea,
+  select {
+    color-scheme: light dark;
   }
 }
 
@@ -45,13 +190,55 @@
 }
 
 /* ----------------------------------------
-   Utility Classes
+   Utility Classes & Dark Mode Safeguards
    ---------------------------------------- */
 @layer utilities {
-  /* Provenance Grid Vignette: soft radial mask fading grid dots toward viewport edges */
+  /* Header dot grid: 280px subtle band fading to transparent with opacity < 6% */
+  .header-dot-grid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 280px;
+    pointer-events: none;
+    background-image: radial-gradient(var(--dot-grid-color) 1px, transparent 1px);
+    background-size: 16px 16px;
+    opacity: 0.05;
+    mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+    z-index: 1;
+  }
+
+  /* Hatching textures for monochrome density / pattern encoding */
+  .hatch-leaver {
+    background-image: repeating-linear-gradient(
+      45deg,
+      var(--ink-primary),
+      var(--ink-primary) 3px,
+      var(--ink-secondary) 3px,
+      var(--ink-secondary) 6px
+    );
+  }
+
+  .hatch-critical {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--ink-primary),
+      var(--ink-primary) 3px,
+      var(--edge-dark) 3px,
+      var(--edge-dark) 6px
+    );
+  }
+
+  .hatch-dots {
+    background-image: radial-gradient(var(--ink-primary) 1.5px, transparent 1.5px);
+    background-size: 6px 6px;
+  }
+
+  /* Provenance Grid Vignette: crisp dots throughout hero, softly fading towards lower sections */
   .mask-grid-vignette {
-    mask-image: radial-gradient(ellipse at 50% 50%, black 50%, rgba(0, 0, 0, 0.7) 75%, transparent 100%);
-    -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 50%, rgba(0, 0, 0, 0.7) 75%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black 85%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 85%, transparent 100%);
     mask-size: 100% 100%;
     -webkit-mask-size: 100% 100%;
     mask-repeat: no-repeat;
@@ -80,7 +267,8 @@
 
   /* Glass panel — frosted translucent card */
   .glass-panel {
-    @apply bg-white/80 backdrop-blur-sm border border-edge-default;
+    background-color: var(--surface-card);
+    @apply backdrop-blur-sm border border-edge-default;
   }
 
   /* Focus ring — accessible keyboard focus indicator */
@@ -93,7 +281,7 @@
   /* Firefox */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #CCCCCC #F0F0F0;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   /* WebKit (Chrome, Safari, Edge) */
@@ -103,18 +291,57 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: #F0F0F0;
+    background: var(--scrollbar-track);
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #CCCCCC;
+    background: var(--scrollbar-thumb);
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #AAAAAA;
+    background: var(--scrollbar-thumb-hover);
   }
+}
+
+/* ----------------------------------------
+   Deliberate Dark Mode Overrides for Legacy Helpers
+   Ensures solid buttons and white cards adapt flawlessly
+   ---------------------------------------- */
+[data-theme="dark"] button.bg-ink-primary.text-white,
+[data-theme="dark"] a.bg-ink-primary.text-white,
+[data-theme="dark"] span.bg-ink-primary.text-white,
+[data-sidebar-theme="dark"] button.bg-ink-primary.text-white,
+[data-sidebar-theme="dark"] a.bg-ink-primary.text-white,
+[data-sidebar-theme="dark"] span.bg-ink-primary.text-white,
+.dark button.bg-ink-primary.text-white,
+.dark a.bg-ink-primary.text-white,
+.dark span.bg-ink-primary.text-white {
+  background-color: var(--btn-primary-bg) !important;
+  color: var(--btn-primary-text) !important;
+}
+
+[data-theme="dark"] button.bg-ink-primary.text-white:hover,
+[data-theme="dark"] a.bg-ink-primary.text-white:hover,
+[data-sidebar-theme="dark"] button.bg-ink-primary.text-white:hover,
+[data-sidebar-theme="dark"] a.bg-ink-primary.text-white:hover,
+.dark button.bg-ink-primary.text-white:hover,
+.dark a.bg-ink-primary.text-white:hover {
+  background-color: var(--btn-primary-hover) !important;
+  color: var(--btn-primary-text) !important;
+}
+
+[data-theme="dark"] .bg-white,
+[data-sidebar-theme="dark"] .bg-white,
+.dark .bg-white {
+  background-color: var(--surface-card);
+}
+
+[data-theme="dark"] .text-black,
+[data-sidebar-theme="dark"] .text-black,
+.dark .text-black {
+  color: var(--ink-primary);
 }
 
 /* ----------------------------------------

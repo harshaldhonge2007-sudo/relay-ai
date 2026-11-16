@@ -42,6 +42,7 @@ class FindingKind(str, enum.Enum):
     CONTRADICTION = "contradiction"
     UNDOCUMENTED_DECISION = "undocumented_decision"
     RISK = "risk"
+    RECURRING_PROBLEM = "recurring_problem"
 
 
 class FindingStatus(str, enum.Enum):
@@ -75,6 +76,7 @@ class Case(Base):
     leaver_person_id = Column(UUID(as_uuid=True), ForeignKey("people.id"))
     status = Column(Enum(CaseStatus), default=CaseStatus.DRAFT)
     source_modes = Column(JSONB, nullable=False, default={"github": "live", "slack": "fixture", "jira": "fixture"})
+    disclose_withheld_counts = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -113,6 +115,9 @@ class Artifact(Base):
     body = Column(Text)
     raw = Column(JSONB, nullable=False)
     acl_tag = Column(String(100), default="readable")
+    quarantine_status = Column(String(50), default="active")  # "active", "quarantined", "cleared", "redacted", "confidential"
+    quarantine_reasons = Column(JSONB, default=[])
+    original_body = Column(Text, nullable=True)
     embedding = Column(String)  # Will use pgvector type in migrations
     created_at = Column(DateTime, default=datetime.utcnow)
     
@@ -291,4 +296,90 @@ class AuditLog(Base):
     actor = Column(String(200), nullable=False)
     action = Column(String(100), nullable=False)
     subject = Column(JSONB, nullable=False, default={})  # {"type": "...", "id": "...", "details": "..."}
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WebhookEvent(Base):
+    """Tracks ingested webhook events for idempotency."""
+    __tablename__ = "webhook_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source = Column(String(50), nullable=False)  # "github"
+    event_type = Column(String(100), nullable=False)  # "push", "pull_request", "issues"
+    idempotency_key = Column(String(500), nullable=False, unique=True)  # sha or delivery_id
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=True)
+    payload_summary = Column(JSONB, nullable=False, default={})
+    processed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LivingMemory(Base):
+    """Continuously updated project intelligence snapshot."""
+    __tablename__ = "living_memory"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False, unique=True)
+    overall_risk_score = Column(Float, nullable=False, default=0.0)
+    bus_factor_score = Column(Float, nullable=False, default=0.0)
+    knowledge_continuity_score = Column(Float, nullable=False, default=0.0)
+    total_events_processed = Column(Integer, nullable=False, default=0)
+    last_event_at = Column(DateTime, nullable=True)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+    summary = Column(JSONB, nullable=False, default={})  # cached intelligence summary
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ComponentRelationship(Base):
+    """Knowledge graph edges between components."""
+    __tablename__ = "component_relationships"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
+    src_component_id = Column(UUID(as_uuid=True), ForeignKey("components.id"), nullable=False)
+    dst_component_id = Column(UUID(as_uuid=True), ForeignKey("components.id"), nullable=False)
+    relation_type = Column(String(100), nullable=False)  # "depends_on", "calls", "imports"
+    strength = Column(Float, nullable=False, default=0.5)
+    evidence = Column(JSONB, nullable=False, default=[])
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BusFactorAlert(Base):
+    """Generated bus-factor risk alerts."""
+    __tablename__ = "bus_factor_alerts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
+    component_id = Column(UUID(as_uuid=True), ForeignKey("components.id"), nullable=False)
+    alert_type = Column(String(100), nullable=False)  # "single_maintainer", "low_diversity", "poor_docs", "critical_undocumented"
+    severity = Column(Float, nullable=False, default=0.0)  # 0-1
+    primary_developer = Column(String(200), nullable=True)
+    primary_developer_share = Column(Float, nullable=True)
+    contributor_count = Column(Integer, nullable=False, default=0)
+    doc_coverage = Column(Float, nullable=False, default=0.0)
+    risk_score = Column(Float, nullable=False, default=0.0)
+    explanation = Column(Text, nullable=False, default="")
+    recommendation = Column(Text, nullable=False, default="")
+    signals = Column(JSONB, nullable=False, default={})
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProjectAsset(Base):
+    """Indexed project documentation assets from cloud storage."""
+    __tablename__ = "project_assets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    case_id = Column(UUID(as_uuid=True), ForeignKey("cases.id"), nullable=False)
+    name = Column(String(500), nullable=False)
+    file_type = Column(String(100), nullable=False)  # "pdf", "docx", "sheet", "diagram", etc.
+    platform = Column(String(100), nullable=False)  # "google_drive", "onedrive", "local", "demo"
+    url = Column(String(2000), nullable=True)
+    owner = Column(String(200), nullable=True)
+    last_modified = Column(DateTime, nullable=True)
+    relevance_score = Column(Float, nullable=False, default=0.5)
+    category = Column(String(100), nullable=False, default="general")  # "architecture", "api_docs", "requirements", etc.
+    is_selected = Column(Boolean, nullable=False, default=False)
+    is_demo = Column(Boolean, nullable=False, default=False)
+    metadata = Column(JSONB, nullable=False, default={})
     created_at = Column(DateTime, default=datetime.utcnow)

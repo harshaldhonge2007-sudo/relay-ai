@@ -1,6 +1,8 @@
+import { Link } from "react-router-dom";
 import { REPO_URL, EVENT_NAME } from "../../constants";
 
 const FOOTER_LINKS = [
+  { label: "Limits & Boundaries", href: "/limits", internal: true },
   { label: "README", href: `${REPO_URL}/blob/main/README.md` },
   { label: "GitHub repo", href: REPO_URL },
   { label: "DISCLOSURE.md", href: `${REPO_URL}/blob/main/README.md#disclosure` },
@@ -20,15 +22,25 @@ export default function Footer() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <nav className="flex flex-wrap gap-6 text-xs font-medium uppercase tracking-widest text-ink-secondary" aria-label="Repository links">
               {FOOTER_LINKS.map((link) => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-ink-primary transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-primary rounded-sm"
-                >
-                  {link.label}
-                </a>
+                link.internal ? (
+                  <Link
+                    key={link.label}
+                    to={link.href}
+                    className="hover:text-ink-primary transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-primary rounded-sm font-semibold text-ink-primary"
+                  >
+                    {link.label}
+                  </Link>
+                ) : (
+                  <a
+                    key={link.label}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-ink-primary transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink-primary rounded-sm"
+                  >
+                    {link.label}
+                  </a>
+                )
               ))}
             </nav>
             <p className="text-[10px] text-ink-secondary font-semibold uppercase tracking-widest leading-relaxed">

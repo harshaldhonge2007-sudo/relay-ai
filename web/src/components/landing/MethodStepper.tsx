@@ -7,13 +7,13 @@ const STEPS = [
     description:
       "Ingests GitHub, Slack, Jira, docs and meeting notes from authorised connectors. Identities are deduplicated across sources, so knowledge is attributed to people, not accounts.",
     illustration: (
-      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
-        <line x1="30" y1="120" x2="75" y2="50" stroke="#555555" strokeWidth="1.5" />
-        <line x1="75" y1="50" x2="120" y2="120" stroke="#555555" strokeWidth="1.5" />
-        <line x1="30" y1="120" x2="120" y2="120" stroke="#111111" strokeWidth="1.5" />
-        <circle cx="30" cy="120" r="6" fill="#111111" />
-        <circle cx="75" cy="50" r="6" fill="#555555" />
-        <circle cx="120" cy="120" r="6" fill="#111111" />
+      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" className="text-ink-primary">
+        <line x1="30" y1="120" x2="75" y2="50" stroke="var(--ink-secondary)" strokeWidth="1.5" />
+        <line x1="75" y1="50" x2="120" y2="120" stroke="var(--ink-secondary)" strokeWidth="1.5" />
+        <line x1="30" y1="120" x2="120" y2="120" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="30" cy="120" r="6" fill="currentColor" />
+        <circle cx="75" cy="50" r="6" fill="var(--ink-secondary)" />
+        <circle cx="120" cy="120" r="6" fill="currentColor" />
       </svg>
     ),
   },
@@ -23,10 +23,10 @@ const STEPS = [
     description:
       "Builds a time-decayed knowledge map: who touched what, when, and how critically. Surfaces concentration risk when one person holds most of the context.",
     illustration: (
-      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
-        <rect x="42" y="90" width="22" height="42" rx="3" fill="#111111" />
-        <rect x="64" y="62" width="22" height="70" rx="3" fill="#555555" />
-        <rect x="86" y="40" width="22" height="92" rx="3" fill="#888888" />
+      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" className="text-ink-primary">
+        <rect x="42" y="90" width="22" height="42" rx="3" fill="currentColor" />
+        <rect x="64" y="62" width="22" height="70" rx="3" fill="var(--ink-secondary)" />
+        <rect x="86" y="40" width="22" height="92" rx="3" fill="var(--ink-tertiary)" />
       </svg>
     ),
   },
@@ -36,10 +36,10 @@ const STEPS = [
     description:
       "Runs a deterministic grounding verifier — offline lexical and entity overlap against sources. Claims are tagged VERIFIED / STATED / INFERRED. Unsupported claims are downgraded, never invented away.",
     illustration: (
-      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
-        <rect x="20" y="50" width="110" height="20" rx="4" fill="#111111" />
-        <rect x="20" y="80" width="80" height="20" rx="4" fill="#555555" />
-        <rect x="20" y="110" width="45" height="20" rx="4" fill="#888888" />
+      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" className="text-ink-primary">
+        <rect x="20" y="50" width="110" height="20" rx="4" fill="currentColor" />
+        <rect x="20" y="80" width="80" height="20" rx="4" fill="var(--ink-secondary)" />
+        <rect x="20" y="110" width="45" height="20" rx="4" fill="var(--ink-tertiary)" />
       </svg>
     ),
   },
@@ -49,11 +49,11 @@ const STEPS = [
     description:
       "The engineering lead approves, rejects (with a mandatory reason) or edits every claim. Release is gated until review is complete, and every change is tracked in immutable version history.",
     illustration: (
-      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
-        <rect x="40" y="45" width="34" height="60" rx="4" fill="none" stroke="#111111" strokeWidth="1.5" />
-        <rect x="40" y="45" width="34" height="10" rx="2" fill="#111111" />
-        <path d="M54 75l-8 8 -6-6" fill="none" stroke="#111111" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="72" cy="105" r="8" fill="#555555" />
+      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" className="text-ink-primary">
+        <rect x="40" y="45" width="34" height="60" rx="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <rect x="40" y="45" width="34" height="10" rx="2" fill="currentColor" />
+        <path d="M54 75l-8 8 -6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx="72" cy="105" r="8" fill="var(--ink-secondary)" />
       </svg>
     ),
   },
@@ -63,12 +63,12 @@ const STEPS = [
     description:
       "First 5 days plan, decision log, key contacts and a successor receipt acknowledgement. A blind-onboarding simulation confirms the successor can operate from the handover doc alone.",
     illustration: (
-      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true">
-        <rect x="34" y="40" width="82" height="90" rx="6" fill="none" stroke="#111111" strokeWidth="1.5" />
-        <rect x="34" y="40" width="82" height="14" rx="2" fill="#111111" />
-        <line x1="50" y1="64" x2="106" y2="64" stroke="#555555" strokeWidth="1.5" />
-        <line x1="50" y1="82" x2="90" y2="82" stroke="#888888" strokeWidth="1.5" />
-        <circle cx="62" cy="104" r="6" fill="#111111" />
+      <svg width="150" height="150" viewBox="0 0 150 150" aria-hidden="true" className="text-ink-primary">
+        <rect x="34" y="40" width="82" height="90" rx="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        <rect x="34" y="40" width="82" height="14" rx="2" fill="currentColor" />
+        <line x1="50" y1="64" x2="106" y2="64" stroke="var(--ink-secondary)" strokeWidth="1.5" />
+        <line x1="50" y1="82" x2="90" y2="82" stroke="var(--ink-tertiary)" strokeWidth="1.5" />
+        <circle cx="62" cy="104" r="6" fill="currentColor" />
       </svg>
     ),
   },

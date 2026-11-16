@@ -1,5 +1,6 @@
 # Sprint Retro — Oct 11, 2024
 Attendees: Priya Nair, Alex Chen, Sam Rodriguez
+Security classification: Internal (CANARY_INT_91bc)
 
 ## What Went Well
 - Webhook retry queue merged ahead of schedule (SL-456).

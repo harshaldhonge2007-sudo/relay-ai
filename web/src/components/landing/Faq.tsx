@@ -133,11 +133,11 @@ export default function Faq(_: FaqProps) {
                       height="16"
                       viewBox="0 0 16 16"
                       fill="none"
-                      stroke={isOpen ? "#111111" : "#555555"}
+                      stroke="currentColor"
                       strokeWidth="1.6"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""} shrink-0`}
+                      className={`transition-transform duration-200 ${isOpen ? "rotate-180 text-ink-primary" : "text-ink-secondary"} shrink-0`}
                       aria-hidden="true"
                     >
                       <polyline points="4 7 8 11 12 7" />

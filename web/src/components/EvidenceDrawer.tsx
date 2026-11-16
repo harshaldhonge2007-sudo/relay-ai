@@ -121,20 +121,52 @@ function HighlightedBody({ body, highlight }: { body: string; highlight?: string
 function EvidenceDrawer() {
   const { open, items, claimText, closeDrawer } = useContext(EvidenceDrawerContext)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const drawerRef = useRef<HTMLElement | null>(null)
+  const triggerElementRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
+
+    // Capture the triggering element to return focus on close
+    triggerElementRef.current = (document.activeElement as HTMLElement) || null
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault()
         closeDrawer()
+        return
+      }
+
+      // Focus trap within drawer
+      if (e.key === 'Tab' && drawerRef.current) {
+        const focusables = drawerRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+        if (!focusables || focusables.length === 0) return
+
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
       }
     }
+
     window.addEventListener('keydown', handleKeyDown)
     setTimeout(() => {
       closeButtonRef.current?.focus()
     }, 50)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      // Return focus to trigger element
+      triggerElementRef.current?.focus?.()
+    }
   }, [open, closeDrawer])
 
   if (!open) return null
@@ -150,10 +182,11 @@ function EvidenceDrawer() {
 
       {/* Panel */}
       <aside
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
         aria-label="Evidence Citations Drawer"
-        className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[480px] flex flex-col bg-white border-l border-edge-default shadow-float overflow-hidden"
+        className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[480px] flex flex-col bg-surface-card border-l border-edge-default shadow-float overflow-hidden focus:outline-none"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-edge-subtle shrink-0">

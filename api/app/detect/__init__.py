@@ -6,4 +6,6 @@ __all__ = [
     "detect_hidden_dependencies",
     "detect_contradictions",
     "detect_gaps",
+    "detect_recurring_problems",
+    "cluster_recurring_problems",
 ]

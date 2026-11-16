@@ -59,7 +59,7 @@ export default function Capabilities({ onTryDemo }: CapabilitiesProps) {
   return (
     <section
       id="capabilities"
-      className="bg-ink-primary"
+      className="bg-[#111111] dark:bg-[#141414] text-white"
       aria-labelledby="capabilities-heading"
     >
       <div className="px-4 lg:px-6 py-16 lg:py-24">

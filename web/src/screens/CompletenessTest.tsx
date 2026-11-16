@@ -3,6 +3,9 @@ import { useParams, Link } from "react-router-dom";
 import { apiFetch } from "../api";
 import { CompletenessData, RequiredFact, InterviewQuestion } from "../types";
 import { useRole } from "../contexts/CaseContext";
+import PageContainer from "../components/ui/PageContainer";
+import PageHeader from "../components/ui/PageHeader";
+import NextStepFooter from "../components/ui/NextStepFooter";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
@@ -78,7 +81,7 @@ function FactsTable({ facts }: { facts: RequiredFact[] }) {
           {facts.map((f, i) => (
             <tr
               key={`${f.kind}-${f.key}-${i}`}
-              className={i % 2 === 0 ? "bg-white" : "bg-surface-base/50"}
+              className={i % 2 === 0 ? "bg-surface-card" : "bg-surface-base/50"}
             >
               <td className="px-4 py-3 text-xs text-ink-tertiary font-mono">{f.kind}</td>
               <td className="px-4 py-3 font-mono text-xs font-medium text-ink-primary">
@@ -252,31 +255,32 @@ export default function CompletenessTest() {
     generatedQuestions.every((q) => confirmedQuestions[q.missing_fact_key || q.id]);
 
   return (
-    <div className="min-h-screen bg-surface-base">
-      <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 animate-fadeIn">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-semibold text-ink-primary">
-                Blind Onboarding Simulation
-              </h1>
-              <span className="rounded-pill bg-surface-elevated border border-edge-default px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-ink-secondary">
-                Completeness Metric
-              </span>
-            </div>
-            <p className="text-xs text-ink-secondary">
-              An autonomous agent attempts to set up, build, and deploy the system using only the generated handover pack.
-            </p>
-          </div>
-
+    <PageContainer width="standard">
+      <PageHeader
+        stepNumber={5}
+        stepEyebrow="Simulate & Verify"
+        title="Blind Onboarding Simulation"
+        description="An autonomous agent attempts to set up, build, and deploy the system using only the generated handover pack."
+        metaChips={
+          data
+            ? [
+                { label: "Overall Score", value: pct(data.score) },
+                { label: "Simulation Mean", value: pct(data.mean) },
+                {
+                  label: "Required Facts",
+                  value: `${data.required_facts.filter((f) => f.status === "found").length}/${data.required_facts.length}`,
+                },
+              ]
+            : undefined
+        }
+        actions={
           <div className="flex flex-wrap items-center gap-2">
             {missingFactsCount > 0 && (
               <button
                 type="button"
                 disabled={fixing || loading}
                 onClick={handleFixMissingFacts}
-                className="inline-flex items-center gap-2 bg-ink-primary text-white rounded-btn px-4 py-2 text-xs font-medium hover:shadow-float disabled:opacity-50"
+                className="inline-flex items-center gap-2 bg-ink-primary text-white rounded-btn px-4 py-2 text-xs font-semibold hover:bg-neutral-800 transition-colors disabled:opacity-50"
               >
                 {fixing ? "Generating Questions..." : "Fix Missing Facts →"}
               </button>
@@ -286,12 +290,13 @@ export default function CompletenessTest() {
               type="button"
               disabled={running || loading}
               onClick={runSimulation}
-              className="inline-flex items-center gap-2 border border-edge-strong bg-white text-ink-primary rounded-btn px-4 py-2 text-xs font-medium hover:bg-surface-elevated disabled:opacity-50"
+              className="inline-flex items-center gap-2 border border-edge-strong bg-surface-card text-ink-primary rounded-btn px-4 py-2 text-xs font-semibold hover:bg-surface-elevated transition-colors disabled:opacity-50"
             >
               {running ? "Simulating..." : "Run Re-test"}
             </button>
           </div>
-        </div>
+        }
+      />
 
         {/* Role and ACL Scoping Notice */}
         <div className="mb-6 p-3 rounded-input bg-surface-elevated border border-edge-subtle flex flex-wrap items-center justify-between gap-2 text-xs text-ink-tertiary">
@@ -350,7 +355,7 @@ export default function CompletenessTest() {
                 return (
                   <div
                     key={q.id}
-                    className="bg-white p-4 rounded-input border border-edge-strong text-xs space-y-3"
+                    className="bg-surface-card p-4 rounded-input border border-edge-strong text-xs space-y-3"
                   >
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 text-ink-tertiary">
@@ -375,7 +380,7 @@ export default function CompletenessTest() {
                         value={suggestedAnswers[k] || ""}
                         onChange={(e) => setSuggestedAnswers((prev) => ({ ...prev, [k]: e.target.value }))}
                         rows={3}
-                        className="w-full text-xs p-2.5 rounded-input border border-edge-strong bg-white text-ink-primary leading-relaxed font-mono focus:outline-none focus:ring-1 focus:ring-ink-primary"
+                        className="w-full text-xs p-2.5 rounded-input border border-edge-strong bg-surface-base text-ink-primary leading-relaxed font-mono focus:outline-none focus:ring-1 focus:ring-ink-primary"
                         placeholder="Enter confirmed answer..."
                       />
                     </div>
@@ -520,7 +525,13 @@ export default function CompletenessTest() {
             <BlockersList blockers={data.blockers} />
           </div>
         )}
-      </div>
-    </div>
+
+        <NextStepFooter
+          nextLabel="Return to Case Home Overview"
+          nextUrl={`/cases/${caseId || "shopledger-priya"}`}
+          currentStep={5}
+          totalSteps={5}
+        />
+    </PageContainer>
   );
 }

@@ -65,6 +65,57 @@ export interface ClaimHistoryEntry {
   note?: string | null
 }
 
+export interface EvidenceDriftMetadata {
+  drifted: boolean
+  is_stale: boolean
+  badge: string
+  detected_at: string
+  trigger_event?: string
+  artifact_id?: string
+  external_id?: string
+  issue_key?: string
+  drift_summary: string
+  prior_evidence: string
+  current_evidence: string
+  diff: string
+  resolved?: boolean
+  resolved_at?: string
+  resolved_by?: string
+}
+
+export interface ReReviewQueueItem {
+  id: string
+  case_id: string
+  claim_id: string
+  claim_text: string
+  section: string
+  status: 'pending' | 'resolved' | 'dismissed'
+  drift_summary: string
+  prior_evidence: string
+  current_evidence: string
+  diff: string
+  suggested_update?: string
+  detected_at: string
+  resolved_at?: string | null
+  resolved_by?: string | null
+  resolution_action?: string | null
+  resolution_notes?: string | null
+  evidence_acl?: {
+    visibility: string
+    allowed_roles: string[]
+  }
+}
+
+export interface DriftStatus {
+  has_drift: boolean
+  stale_claim_count: number
+  re_review_pending_count: number
+  latest_released_version: number
+  acknowledged_version: number | null
+  update_available: boolean
+  recent_drift_event?: any
+}
+
 export interface HandoverItem {
   id: string
   case_id: string
@@ -80,6 +131,8 @@ export interface HandoverItem {
   original_text?: string | null
   unsupported_flag?: boolean
   unsupported_reason?: string
+  is_stale?: boolean
+  evidence_drift?: EvidenceDriftMetadata
   grounding?: {
     score: number
     method: string
@@ -186,18 +239,26 @@ export interface HandoverVersionSummary {
   claim_count: number
 }
 
+export interface HandoverWordDiffToken {
+  type: 'equal' | 'delete' | 'insert'
+  text: string
+}
+
 export interface HandoverDiffEntry {
   claim_id: string
   section: string
-  change_type: 'modified' | 'unchanged' | 'added' | 'removed'
+  change_type: 'modified' | 'edited' | 'unchanged' | 'added' | 'removed' | 'rejected' | 'downgraded'
   v1: {
     status?: string
     text?: string
+    provenance?: string
   } | null
   v2: {
     status?: string
     text?: string
+    provenance?: string
   } | null
+  word_diff?: HandoverWordDiffToken[]
 }
 
 export interface HandoverDiffResponse {
@@ -207,4 +268,40 @@ export interface HandoverDiffResponse {
   v2_meta: { author: string; timestamp: string; summary: string; is_released?: boolean }
   diff: HandoverDiffEntry[]
   summary: string
+  audit_log_url?: string
+}
+
+export interface RecurringProblem {
+  id: string
+  title: string
+  category: 'code_churn' | 'reopened_bug' | 'repeated_incident' | 'flaky_test'
+  description: string
+  component: string
+  frequency: number
+  first_seen: string
+  last_seen: string
+  sources_corroborated: string[]
+  provenance: 'VERIFIED' | 'INFERRED'
+  evidence_ids: string[]
+  suggested_action: string
+}
+
+export interface ComponentContactItem {
+  name: string
+  handle: string
+  role: string
+  source: string
+  provenance: 'VERIFIED' | 'STATED' | 'INFERRED'
+  contact_type: 'internal' | 'external_vendor'
+  notes: string
+  knowledge_score?: number
+}
+
+export interface ComponentContactsGroup {
+  component_id?: string
+  component_name: string
+  has_remaining_owner: boolean
+  warning?: string | null
+  contacts_count: number
+  contacts: ComponentContactItem[]
 }

@@ -1,5 +1,6 @@
 # Architecture Sync — Oct 14, 2024
 Attendees: Priya Nair (Staff Eng), Alex Chen (Sr Eng), Sam Rodriguez (DevOps), CTO
+Security classification: Internal (CANARY_INT_91bc)
 
 ## Agenda
 1. Webhook Retry Architecture & Failure Modes

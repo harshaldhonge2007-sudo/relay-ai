@@ -1,0 +1,206 @@
+[
+  {
+    "id": "sec_001",
+    "text": "Exported AWS key: AKIAIOSFODNN7EXAMPLE for the S3 backup script.",
+    "expected_quarantine": true,
+    "expected_categories": ["secrets"]
+  },
+  {
+    "id": "sec_002",
+    "text": "Production GitHub PAT is ghp_111122223333444455556666777788889999 for automated CI.",
+    "expected_quarantine": true,
+    "expected_categories": ["secrets"]
+  },
+  {
+    "id": "sec_003",
+    "text": "Stripe test key: sk-live-abc1234567890123456789012345678901234",
+    "expected_quarantine": true,
+    "expected_categories": ["secrets"]
+  },
+  {
+    "id": "sec_004",
+    "text": "Database password: password=superSecretPass123! in the staging config.",
+    "expected_quarantine": true,
+    "expected_categories": ["secrets"]
+  },
+  {
+    "id": "sec_005",
+    "text": "Use Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c to authenticate.",
+    "expected_quarantine": true,
+    "expected_categories": ["secrets"]
+  },
+  {
+    "id": "sec_006",
+    "text": "High entropy token: token=ZjhjODNmMGJhOTQzYjU1MTJhMDkzOGI0",
+    "expected_quarantine": true,
+    "expected_categories": ["secrets"]
+  },
+  {
+    "id": "pii_001",
+    "text": "Please email user contact at john.smith@company.org regarding the refund.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii"]
+  },
+  {
+    "id": "pii_002",
+    "text": "Customer service phone line reached at (415) 555-0199 for billing issues.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii"]
+  },
+  {
+    "id": "pii_003",
+    "text": "Charged card 4532 0150 1234 5671 successfully for subscription renewal.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii"]
+  },
+  {
+    "id": "pii_004",
+    "text": "Identity verification requires SSN: 123-45-6789 before disbursement.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii"]
+  },
+  {
+    "id": "pii_005",
+    "text": "Support escalation from sarah_connor+billing@enterprise.io via Zendesk.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii"]
+  },
+  {
+    "id": "pii_006",
+    "text": "Direct dial phone: +1-206-555-0144 for ops on-call escalation.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii"]
+  },
+  {
+    "id": "hr_001",
+    "text": "Priya's annual salary is $185,000 with a $25k bonus package.",
+    "expected_quarantine": true,
+    "expected_categories": ["hr_legal"]
+  },
+  {
+    "id": "hr_002",
+    "text": "Employee was placed on a performance improvement plan (PIP) in Q2.",
+    "expected_quarantine": true,
+    "expected_categories": ["hr_legal"]
+  },
+  {
+    "id": "hr_003",
+    "text": "HR processed the severance package and termination documentation today.",
+    "expected_quarantine": true,
+    "expected_categories": ["hr_legal"]
+  },
+  {
+    "id": "hr_004",
+    "text": "Legal counsel advised that the lawsuit and active litigation require document hold.",
+    "expected_quarantine": true,
+    "expected_categories": ["hr_legal"]
+  },
+  {
+    "id": "hr_005",
+    "text": "Acquisition discussions and merger terms are under strict non-disclosure agreement (NDA).",
+    "expected_quarantine": true,
+    "expected_categories": ["hr_legal"]
+  },
+  {
+    "id": "hr_006",
+    "text": "Proposed base pay adjustment of 15% pending quarterly executive review.",
+    "expected_quarantine": true,
+    "expected_categories": ["hr_legal"]
+  },
+  {
+    "id": "cust_001",
+    "text": "Webhook failure reported for CID-88219 during checkout checkout.",
+    "expected_quarantine": true,
+    "expected_categories": ["customer"]
+  },
+  {
+    "id": "cust_002",
+    "text": "Database error on customer_id: cust_9921448821 during migration.",
+    "expected_quarantine": true,
+    "expected_categories": ["customer"]
+  },
+  {
+    "id": "cust_003",
+    "text": "Account tenant_id: tenant-corp-alpha-9021 reached rate limit threshold.",
+    "expected_quarantine": true,
+    "expected_categories": ["customer"]
+  },
+  {
+    "id": "cust_004",
+    "text": "Investigating settlement discrepancy for account_id: acct_8841291.",
+    "expected_quarantine": true,
+    "expected_categories": ["customer"]
+  },
+  {
+    "id": "multi_001",
+    "text": "Client robert.morris@client.com (CID-88219) disputed $12,000 invoice.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii", "customer"]
+  },
+  {
+    "id": "multi_002",
+    "text": "VP salary discussion sent to john.doe@shopledger.io under NDA.",
+    "expected_quarantine": true,
+    "expected_categories": ["pii", "hr_legal"]
+  },
+  {
+    "id": "neg_001",
+    "text": "Merged PR #47: implement exponential backoff retry queue for payment webhooks.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_002",
+    "text": "PostgreSQL 15 upgrade deferred to Q1 2025 due to staging test schedule.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_003",
+    "text": "Fixed circular dependency between models.py and database engine initialization.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_004",
+    "text": "Refactored Dockerfile to use multi-stage build and non-root user.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_005",
+    "text": "Updated Vitest configuration to enable coverage reporting and jsdom environment.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_006",
+    "text": "Bug fix: Handle empty list when computing knowledge score distribution.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_007",
+    "text": "Release v1.2.0: Added dark mode theme support and keyboard shortcut navigation.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_008",
+    "text": "Architecture sync agenda: discuss dead-letter queue retention and SQS timeout.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_009",
+    "text": "Runbook: Step 1 test on staging, Step 2 verify pg_upgrade compatibility flags.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  },
+  {
+    "id": "neg_010",
+    "text": "Added index on external_id and occurred_at columns to optimize timeline query.",
+    "expected_quarantine": false,
+    "expected_categories": []
+  }
+]
